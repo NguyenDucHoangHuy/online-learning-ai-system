@@ -37,7 +37,7 @@ online-learning-ai-system/
 Trước khi chạy project, cần cài:
 
 - [Git](https://git-scm.com)
-- [Node.js 22.16.0](https://nodejs.org) hoặc dùng NVM
+- [Node.js 18.20.8](https://nodejs.org) hoặc dùng NVM
 - [Python 3.10.x](https://python.org)
 - [Docker Desktop](https://docker.com/products/docker-desktop)
 
