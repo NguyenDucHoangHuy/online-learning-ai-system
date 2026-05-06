@@ -21,6 +21,8 @@ import SessionHistoryPage from "../pages/teacher/SessionHistoryPage";
 import SessionReportPage from "../pages/teacher/SessionReportPage";
 
 import { ROUTES } from "../constants";
+import StudentLayout from "../layouts/StudentLayout";
+import TeacherLayout from "../layouts/TeacherLayout";
 
 const router = createBrowserRouter([
   // ================= PUBLIC =================
@@ -36,45 +38,55 @@ const router = createBrowserRouter([
     path: ROUTES.REGISTER,
     element: <RegisterPage />,
   },
-
-  // ================= STUDENT =================
-  {
-    path: ROUTES.STUDENT.JOIN,
-    element: <JoinClassPage />,
-  },
   {
     path: ROUTES.STUDENT.ROOM,
     element: <StudyRoomPage />,
   },
   {
-    path: ROUTES.STUDENT.HISTORY,
-    element: <MyLearningPage />,
-  },
-
-  // ================= TEACHER =================
-  {
-    path: ROUTES.TEACHER.DASHBOARD,
-    element: <DashboardPage />,
-  },
-  {
-    path: ROUTES.TEACHER.CLASSES,
-    element: <ManageClassesPage />,
-  },
-  {
-    path: ROUTES.TEACHER.CREATE_SESSION,
-    element: <CreateSessionPage />,
-  },
-  {
     path: ROUTES.TEACHER.SESSION,
     element: <TeachingRoomPage />,
   },
+
+  // ================= STUDENT (LAYOUT) =================
   {
-    path: ROUTES.TEACHER.HISTORY,
-    element: <SessionHistoryPage />,
+    element: <StudentLayout />, // 👈 BỌC LAYOUT
+    children: [
+      {
+        path: ROUTES.STUDENT.JOIN,
+        element: <JoinClassPage />,
+      },
+      {
+        path: ROUTES.STUDENT.HISTORY,
+        element: <MyLearningPage />,
+      },
+    ],
   },
+
+  // ================= TEACHER (LAYOUT) =================
   {
-    path: ROUTES.TEACHER.REPORT,
-    element: <SessionReportPage />,
+    element: <TeacherLayout />, // 👈 BỌC LAYOUT
+    children: [
+      {
+        path: ROUTES.TEACHER.DASHBOARD,
+        element: <DashboardPage />,
+      },
+      {
+        path: ROUTES.TEACHER.CLASSES,
+        element: <ManageClassesPage />,
+      },
+      {
+        path: ROUTES.TEACHER.CREATE_SESSION,
+        element: <CreateSessionPage />,
+      },
+      {
+        path: ROUTES.TEACHER.HISTORY,
+        element: <SessionHistoryPage />,
+      },
+      {
+        path: ROUTES.TEACHER.REPORT,
+        element: <SessionReportPage />,
+      },
+    ],
   },
 
   // ================= 404 =================

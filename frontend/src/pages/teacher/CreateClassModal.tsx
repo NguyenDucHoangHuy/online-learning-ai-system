@@ -1,5 +1,6 @@
 // src/pages/teacher/CreateClassModal.tsx
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { X, Globe, User, Folder, Book } from "lucide-react";
@@ -29,7 +30,7 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
       {/* Modal Container */}
       <div
@@ -75,7 +76,7 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
                 placeholder="e.g., 'Neural Networks 401'"
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                className="rounded-xl border-slate-200 focus:ring-blue-500"
+                className="rounded-xl border-slate-200 focus:ring-blue-500 font-bold text-slate-800"
               />
             </div>
 
@@ -163,7 +164,8 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>, // ✅ Dấu phẩy kết thúc tham số đầu tiên của createPortal
+    document.body, // Tham số thứ 2 của createPortal
   );
 };
 
