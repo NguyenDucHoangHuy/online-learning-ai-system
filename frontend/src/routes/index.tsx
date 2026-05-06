@@ -12,14 +12,18 @@ import JoinClassPage from "../pages/student/JoinClassPage";
 import StudyRoomPage from "../pages/student/StudyRoomPage";
 
 // Teacher pages
+import DashboardPage from "../pages/teacher/DashboardPage";
 import TeachingRoomPage from "../pages/teacher/TeachingRoomPage";
+import CreateSessionPage from "../pages/teacher/CreateSessionPage";
+import ManageClassesPage from "../pages/teacher/ManageClassesPage";
+import { RealtimeMonitorPage } from "../pages/teacher/RealtimeMonitorPage";
 import SessionHistoryPage from "../pages/teacher/SessionHistoryPage";
 import SessionReportPage from "../pages/teacher/SessionReportPage";
 
 import { ROUTES } from "../constants";
 
 const router = createBrowserRouter([
-  // Public routes
+  // ================= PUBLIC =================
   {
     path: ROUTES.HOME,
     element: <HomePage />,
@@ -33,7 +37,7 @@ const router = createBrowserRouter([
     element: <RegisterPage />,
   },
 
-  // Student routes
+  // ================= STUDENT =================
   {
     path: ROUTES.STUDENT.ROOM,
     element: <StudyRoomPage />,
@@ -47,10 +51,26 @@ const router = createBrowserRouter([
     element: <JoinClassPage />,
   },
 
-  // Teacher routes
+  // ================= TEACHER =================
+  {
+    path: ROUTES.TEACHER.DASHBOARD || "/teacher/dashboard",
+    element: <DashboardPage />,
+  },
   {
     path: ROUTES.TEACHER.SESSION,
     element: <TeachingRoomPage />,
+  },
+  {
+    path: "/teacher/create-session",
+    element: <CreateSessionPage />,
+  },
+  {
+    path: "/teacher/manage-classes",
+    element: <ManageClassesPage />,
+  },
+  {
+    path: "/teacher/realtime-monitor",
+    element: <RealtimeMonitorPage />,
   },
   {
     path: "/teacher/session-history",
@@ -61,7 +81,7 @@ const router = createBrowserRouter([
     element: <SessionReportPage />,
   },
 
-  // Not found
+  // ================= 404 =================
   {
     path: "*",
     element: <NotFoundPage />,
