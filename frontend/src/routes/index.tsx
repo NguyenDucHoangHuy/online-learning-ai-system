@@ -37,7 +37,7 @@ const router = createBrowserRouter([
     element: <MyLearningPage />,
   },
   {
-    path: "/student/join-class",
+    path: "/student",
     element: <JoinClassPage />,
   },
 

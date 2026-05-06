@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   onSignOut?: () => void;
@@ -6,6 +7,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onSignOut, activeItem = 'Join Class' }) => {
+   const navigate = useNavigate();
   return (
     <aside style={styles.sidebar}>
       {/* Phần trên cùng: Logo và Menu điều hướng */}
@@ -19,11 +21,30 @@ const Sidebar: React.FC<SidebarProps> = ({ onSignOut, activeItem = 'Join Class' 
         </div>
 
         <nav style={styles.navMenu}>
-          <div style={{ ...styles.navItem, ...(activeItem === 'Join Class' ? styles.navItemActive : {}) }}>
+          {/* Join Class */}
+          <div
+            style={{
+              ...styles.navItem,
+              ...(activeItem === "Join Class"
+                ? styles.navItemActive
+                : {}),
+            }}
+            onClick={() => navigate("/student")}
+          >
             <span style={styles.navIcon}>🏠</span>
             <span>Join Class</span>
           </div>
-          <div style={styles.navItem}>
+
+          {/* History */}
+          <div
+            style={{
+              ...styles.navItem,
+              ...(activeItem === "History"
+                ? styles.navItemActive
+                : {}),
+            }}
+            onClick={() => navigate("/student/my-learning")}
+          >
             <span style={styles.navIcon}>⏱️</span>
             <span>History</span>
           </div>

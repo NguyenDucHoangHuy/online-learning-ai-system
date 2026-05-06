@@ -25,6 +25,7 @@ const ongoingSessions = [
 ];
 
 const JoinClassPage: React.FC = () => {
+  
   const [roomCode, setRoomCode] = useState('');
 
   const handleJoinClass = (e: React.FormEvent) => {
