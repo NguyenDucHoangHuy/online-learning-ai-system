@@ -14,9 +14,8 @@ import {
 
 // Import các thành phần nội bộ
 import { Button } from "../../components/ui/Button";
-import ClassesPage from "./ClassesPage"; // File chứa component Pop-up chi tiết
+import ClassesPage from "./ClassesPage";
 
-// Định nghĩa cấu trúc dữ liệu cho một lớp học
 interface ClassItem {
   id: number;
   title: string;
@@ -25,16 +24,12 @@ interface ClassItem {
   created: string;
 }
 
-// Type cho Props của ClassCard (loại bỏ id vì không dùng trực tiếp trong giao diện card)
 type ClassCardProps = Omit<ClassItem, "id">;
 
 const ManageClassesPage: React.FC = () => {
   const navigate = useNavigate();
-
-  // Trạng thái điều khiển việc đóng/mở Modal tạo lớp học
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Dữ liệu mẫu (sau này có thể thay bằng dữ liệu từ API)
   const classes: ClassItem[] = [
     {
       id: 1,
@@ -61,20 +56,22 @@ const ManageClassesPage: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] text-slate-800 font-sans">
-      {/* SIDEBAR - Cố định bên trái, đồng bộ hoàn toàn với Dashboard */}
+      {/* SIDEBAR */}
       <aside className="w-64 bg-white border-r border-gray-100 flex flex-col p-6 fixed h-full z-20">
         <div
           className="flex items-center gap-3 mb-10 px-2 cursor-pointer transition-transform active:scale-95"
           onClick={() => navigate("/teacher/dashboard")}
         >
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-100">
+          {/* Đã đổi bg-indigo-600 thành bg-[#2563EB] */}
+          <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-100">
             AI
           </div>
           <div>
             <h1 className="font-bold text-lg leading-none text-slate-900">
               EduSense
             </h1>
-            <span className="text-[10px] font-bold text-indigo-500 tracking-widest uppercase">
+            {/* Đã đổi text-indigo-500 thành text-[#2563EB] */}
+            <span className="text-[10px] font-bold text-[#2563EB] tracking-widest uppercase">
               Platform
             </span>
           </div>
@@ -90,14 +87,14 @@ const ManageClassesPage: React.FC = () => {
 
           <button
             onClick={() => navigate("/teacher/classes")}
-            className="flex items-center gap-3 w-full p-3 bg-indigo-50 text-indigo-600 rounded-xl font-semibold transition-all shadow-sm shadow-indigo-50/50"
+            className="flex items-center gap-3 w-full p-3 bg-blue-50 text-[#2563EB] rounded-xl font-semibold transition-all shadow-sm shadow-blue-50/50"
           >
             <BookOpen size={20} /> Manage Classes
           </button>
 
           <button
             onClick={() => navigate("/teacher/create-session")}
-            className="flex items-center gap-3 w-full p-3 text-slate-500 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-medium group"
+            className="flex items-center gap-3 w-full p-3 text-slate-500 hover:bg-[#2563EB] hover:text-white rounded-xl transition-all font-medium group"
           >
             <PlusCircle
               size={20}
@@ -125,12 +122,11 @@ const ManageClassesPage: React.FC = () => {
         </div>
       </aside>
 
-      {/* MAIN CONTENT - Đẩy lề trái 64 để tránh bị Sidebar che khuất */}
       <main className="ml-64 flex-1 p-10">
         <header className="flex justify-between items-start mb-10">
           <div>
             <h2 className="text-4xl font-extrabold tracking-tight text-slate-900">
-              My <span className="text-indigo-600">Classes</span>
+              My <span className="text-[#2563EB]">Classes</span>
             </h2>
             <p className="text-slate-500 mt-1 text-lg font-medium">
               Curate and manage your active academic subjects
@@ -146,10 +142,10 @@ const ManageClassesPage: React.FC = () => {
             </Button>
 
             <div className="flex gap-2">
-              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
+              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-[#2563EB] transition-all shadow-sm">
                 <Search size={18} />
               </button>
-              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm relative">
+              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-[#2563EB] transition-all shadow-sm relative">
                 <Bell size={18} />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
               </button>
@@ -157,7 +153,6 @@ const ManageClassesPage: React.FC = () => {
           </div>
         </header>
 
-        {/* Thanh tìm kiếm */}
         <div className="relative mb-12 max-w-xl">
           <Search
             className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -166,11 +161,10 @@ const ManageClassesPage: React.FC = () => {
           <input
             type="text"
             placeholder="Filter by subject name or code..."
-            className="w-full pl-14 pr-6 py-4 bg-white border border-gray-100 rounded-[1.5rem] shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 placeholder:text-slate-400 font-medium transition-all"
+            className="w-full pl-14 pr-6 py-4 bg-white border border-gray-100 rounded-[1.5rem] shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-400 font-medium transition-all"
           />
         </div>
 
-        {/* Lưới các thẻ lớp học */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {classes.map((item) => (
             <ClassCard
@@ -184,13 +178,11 @@ const ManageClassesPage: React.FC = () => {
         </div>
       </main>
 
-      {/* Thành phần Pop-up tạo lớp học mới */}
       <ClassesPage isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </div>
   );
 };
 
-// Component thẻ lớp học riêng biệt
 const ClassCard: React.FC<ClassCardProps> = ({
   title,
   description,
@@ -200,7 +192,8 @@ const ClassCard: React.FC<ClassCardProps> = ({
   <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-50 flex flex-col justify-between h-[380px] relative hover:shadow-md hover:-translate-y-1 transition-all duration-300 group">
     <div>
       <div className="flex justify-between items-start mb-8">
-        <div className="p-4 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors shadow-sm">
+        {/* Đã đổi bg-indigo-50 và hover:bg-indigo-600 */}
+        <div className="p-4 bg-blue-50 text-[#2563EB] group-hover:bg-[#2563EB] group-hover:text-white transition-colors shadow-sm">
           <BookOpen size={28} />
         </div>
         <button className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
@@ -208,7 +201,7 @@ const ClassCard: React.FC<ClassCardProps> = ({
         </button>
       </div>
 
-      <h3 className="text-xl font-extrabold text-slate-900 mb-3 leading-tight uppercase tracking-tight group-hover:text-indigo-600 transition-colors">
+      <h3 className="text-xl font-extrabold text-slate-900 mb-3 leading-tight uppercase tracking-tight group-hover:text-[#2563EB] transition-colors">
         {title}
       </h3>
       <p className="text-slate-500 font-medium leading-relaxed text-sm">
@@ -219,7 +212,7 @@ const ClassCard: React.FC<ClassCardProps> = ({
     <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-50">
       <div className="flex items-center gap-3">
         <div className="flex -space-x-2">
-          <div className="w-8 h-8 rounded-full bg-indigo-100 border-2 border-white"></div>
+          <div className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white"></div>
           <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white"></div>
         </div>
         <div className="text-[10px] font-bold text-slate-400 uppercase leading-none tracking-wider">
@@ -228,7 +221,7 @@ const ClassCard: React.FC<ClassCardProps> = ({
       </div>
 
       <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-gray-100">
-        <Calendar size={14} className="text-indigo-500" />
+        <Calendar size={14} className="text-[#2563EB]" />
         <div className="text-[10px] font-bold text-slate-400 uppercase leading-tight">
           Created <br /> <span className="text-slate-600">{created}</span>
         </div>

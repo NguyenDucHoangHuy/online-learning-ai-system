@@ -27,7 +27,7 @@ const DashboardPage = () => {
       value: "12",
       change: "+12%",
       trend: "up",
-      icon: <BookOpen className="w-5 h-5 text-blue-600" />,
+      icon: <BookOpen className="w-5 h-5 text-[#2563EB]" />, // Đã đổi màu icon
     },
     {
       label: "TOTAL SESSIONS",
@@ -41,7 +41,7 @@ const DashboardPage = () => {
       value: "86%",
       change: "+8%",
       trend: "up",
-      icon: <TrendingUp className="w-5 h-5 text-purple-600" />,
+      icon: <TrendingUp className="w-5 h-5 text-blue-500" />, // Đã đổi màu icon
     },
     {
       label: "QUESTIONS ASKED",
@@ -61,20 +61,21 @@ const DashboardPage = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] text-slate-800 font-sans">
-      {/* SIDEBAR - Thanh điều hướng bên trái */}
+      {/* SIDEBAR */}
       <aside className="w-64 bg-white border-r border-gray-100 flex flex-col p-6 fixed h-full z-20">
         <div
           className="flex items-center gap-3 mb-10 px-2 cursor-pointer transition-transform active:scale-95"
           onClick={() => navigate("/teacher/dashboard")}
         >
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-100">
+          {/* Đã đổi bg-blue-600 thành #2563EB */}
+          <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-100">
             AI
           </div>
           <div>
             <h1 className="font-bold text-lg leading-none text-slate-900">
               EduSense
             </h1>
-            <span className="text-[10px] font-bold text-indigo-500 tracking-widest uppercase">
+            <span className="text-[10px] font-bold text-[#2563EB] tracking-widest uppercase">
               Platform
             </span>
           </div>
@@ -83,7 +84,7 @@ const DashboardPage = () => {
         <nav className="flex-1 space-y-2">
           <button
             onClick={() => navigate("/teacher/dashboard")}
-            className="flex items-center gap-3 w-full p-3 bg-indigo-50 text-indigo-600 rounded-xl font-semibold transition-all"
+            className="flex items-center gap-3 w-full p-3 bg-blue-50 text-[#2563EB] rounded-xl font-semibold transition-all shadow-sm shadow-blue-50/50"
           >
             <LayoutDashboard size={20} /> Dashboard
           </button>
@@ -95,10 +96,9 @@ const DashboardPage = () => {
             <BookOpen size={20} /> Manage Classes
           </button>
 
-          {/* SỰ KIỆN CLICK ĐIỀU HƯỚNG ĐẾN CREATE SESSION */}
           <button
             onClick={() => navigate("/teacher/create-session")}
-            className="flex items-center gap-3 w-full p-3 text-slate-500 hover:bg-blue-600 hover:text-white rounded-xl transition-all font-medium group"
+            className="flex items-center gap-3 w-full p-3 text-slate-500 hover:bg-[#2563EB] hover:text-white rounded-xl transition-all font-medium group"
           >
             <PlusCircle
               size={20}
@@ -126,12 +126,12 @@ const DashboardPage = () => {
         </div>
       </aside>
 
-      {/* MAIN CONTENT - Nội dung chính */}
+      {/* MAIN CONTENT */}
       <main className="ml-64 flex-1 p-10">
         <header className="flex justify-between items-start mb-10">
           <div>
             <h2 className="text-4xl font-extrabold tracking-tight text-slate-900">
-              Teacher <span className="text-indigo-600">Dashboard</span>
+              Teacher <span className="text-[#2563EB]">Dashboard</span>
             </h2>
             <p className="text-slate-500 mt-1 text-lg font-medium">
               Welcome back, Professor
@@ -148,14 +148,14 @@ const DashboardPage = () => {
             </Button>
 
             <div className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-100 rounded-full shadow-sm text-sm font-bold text-slate-600">
-              <Clock size={16} className="text-indigo-500" /> May 6, 2026
+              <Clock size={16} className="text-[#2563EB]" /> May 6, 2026
             </div>
 
             <div className="flex gap-2">
-              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
+              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-[#2563EB] transition-all shadow-sm">
                 <Search size={18} />
               </button>
-              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm relative">
+              <button className="p-2.5 bg-white border border-gray-100 rounded-full text-slate-400 hover:text-[#2563EB] transition-all shadow-sm relative">
                 <Bell size={18} />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
               </button>
@@ -163,7 +163,7 @@ const DashboardPage = () => {
           </div>
         </header>
 
-        {/* STATS GRID - Các ô thống kê */}
+        {/* STATS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
           {stats.map((stat, index) => (
             <div
@@ -171,7 +171,7 @@ const DashboardPage = () => {
               className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-50 group hover:shadow-md transition-all hover:-translate-y-1"
             >
               <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-indigo-50 transition-colors">
+                <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-blue-50 transition-colors">
                   {stat.icon}
                 </div>
                 <div
@@ -195,9 +195,8 @@ const DashboardPage = () => {
           ))}
         </div>
 
-        {/* SECTION BIỂU ĐỒ VÀ CÁC BUỔI HỌC GẦN ĐÂY */}
+        {/* SECTION BIỂU ĐỒ */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Cột trái: Biểu đồ tương tác */}
           <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-50 min-h-[400px]">
             <div className="flex justify-between items-center mb-8">
               <div>
@@ -209,7 +208,6 @@ const DashboardPage = () => {
                 </p>
               </div>
 
-              {/* NÚT TẠO MỚI NHANH TRONG DASHBOARD */}
               <button
                 onClick={() => navigate("/teacher/create-session")}
                 className="bg-[#1E293B] text-white rounded-xl px-4 py-2 text-[10px] font-bold flex items-center gap-2 hover:bg-slate-800 transition-colors shadow-lg shadow-slate-200"
@@ -218,11 +216,12 @@ const DashboardPage = () => {
               </button>
             </div>
 
-            <div className="h-64 w-full bg-indigo-50/20 rounded-[2rem] border-2 border-dashed border-indigo-100 flex items-center justify-center relative overflow-hidden">
+            {/* Biểu đồ giả lập với màu xanh lam mới */}
+            <div className="h-64 w-full bg-blue-50/20 rounded-[2rem] border-2 border-dashed border-blue-100 flex items-center justify-center relative overflow-hidden">
               <div className="absolute inset-0 flex items-end">
                 <svg
                   viewBox="0 0 400 100"
-                  className="w-full h-full text-indigo-500 opacity-20"
+                  className="w-full h-full text-[#2563EB] opacity-20"
                 >
                   <path
                     d="M0,50 Q50,20 100,50 T200,50 T300,50 T400,20"
@@ -232,13 +231,13 @@ const DashboardPage = () => {
                   />
                 </svg>
               </div>
-              <p className="text-indigo-300 font-bold text-sm uppercase tracking-widest z-10">
+              <p className="text-blue-400 font-bold text-sm uppercase tracking-widest z-10">
                 Attention Waveform Active
               </p>
             </div>
           </div>
 
-          {/* Cột phải: Recent Sessions */}
+          {/* Recent Sessions */}
           <div className="bg-[#0F172A] p-8 rounded-[2.5rem] shadow-xl text-white flex flex-col">
             <h3 className="text-xl font-bold mb-6 tracking-tight">
               Recent Sessions
@@ -248,12 +247,12 @@ const DashboardPage = () => {
                 <div
                   key={index}
                   className="flex items-center gap-4 p-4 bg-slate-800/50 hover:bg-blue-600/20 rounded-2xl transition-all cursor-pointer group border border-slate-700/50"
-                  onClick={() => navigate("/teacher/history")} // Hoặc link đến chi tiết session
+                  onClick={() => navigate("/teacher/history")}
                 >
-                  <div className="p-3 bg-slate-700 rounded-xl group-hover:bg-blue-600 transition-colors">
+                  <div className="p-3 bg-slate-700 rounded-xl group-hover:bg-[#2563EB] transition-colors">
                     <Clock
                       size={20}
-                      className="text-indigo-300 group-hover:text-white"
+                      className="text-blue-300 group-hover:text-white"
                     />
                   </div>
                   <div className="flex-1">

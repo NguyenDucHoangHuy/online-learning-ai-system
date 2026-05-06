@@ -38,20 +38,21 @@ const CreateSessionPage = () => {
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] text-slate-800 font-sans">
-      {/* --- GIỮ NGUYÊN SIDEBAR TỪ DASHBOARD --- */}
+      {/* SIDEBAR */}
       <aside className="w-64 bg-white border-r border-gray-100 flex flex-col p-6 fixed h-full z-20">
         <div
           className="flex items-center gap-3 mb-10 px-2 cursor-pointer transition-transform active:scale-95"
           onClick={() => navigate("/teacher/dashboard")}
         >
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-100">
+          {/* Đổi sang màu #2563EB */}
+          <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-100">
             AI
           </div>
           <div>
             <h1 className="font-bold text-lg leading-none text-slate-900">
               EduSense
             </h1>
-            <span className="text-[10px] font-bold text-indigo-500 tracking-widest uppercase">
+            <span className="text-[10px] font-bold text-[#2563EB] tracking-widest uppercase">
               Platform
             </span>
           </div>
@@ -74,7 +75,7 @@ const CreateSessionPage = () => {
 
           <button
             onClick={() => navigate("/teacher/create-session")}
-            className="flex items-center gap-3 w-full p-3 bg-indigo-50 text-indigo-600 rounded-xl font-semibold transition-all"
+            className="flex items-center gap-3 w-full p-3 bg-blue-50 text-[#2563EB] rounded-xl font-semibold transition-all"
           >
             <PlusCircle size={20} /> Create Session
           </button>
@@ -98,12 +99,11 @@ const CreateSessionPage = () => {
         </div>
       </aside>
 
-      {/* --- NỘI DUNG CHÍNH (CREATE SESSION) --- */}
+      {/* MAIN CONTENT */}
       <main className="ml-64 flex-1 p-10">
-        {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-gray-500 mb-8">
           <div
-            className="flex items-center gap-1 hover:text-indigo-600 cursor-pointer transition-colors group"
+            className="flex items-center gap-1 hover:text-[#2563EB] cursor-pointer transition-colors group"
             onClick={() => navigate("/teacher/dashboard")}
           >
             <LayoutDashboard
@@ -129,13 +129,12 @@ const CreateSessionPage = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2 space-y-8 bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100">
-            {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-3">
                 <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                   Subject Portfolio
                 </label>
-                <select className="w-full p-5 bg-gray-50 border-none rounded-2xl text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer">
+                <select className="w-full p-5 bg-gray-50 border-none rounded-2xl text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer">
                   <option>Data Structures & Algorithms</option>
                   <option>Web Development</option>
                 </select>
@@ -148,7 +147,7 @@ const CreateSessionPage = () => {
                   placeholder="e.g. Midterm Exam Review"
                   value={sessionTitle}
                   onChange={(e) => setSessionTitle(e.target.value)}
-                  className="bg-gray-50 border-none rounded-2xl p-7 text-gray-800"
+                  className="bg-gray-50 border-none rounded-2xl p-7 text-gray-800 focus-visible:ring-[#2563EB]/20"
                 />
               </div>
             </div>
@@ -161,7 +160,7 @@ const CreateSessionPage = () => {
                 <Input
                   value={sessionCode}
                   readOnly
-                  className="bg-indigo-50/50 border-none rounded-2xl p-7 font-mono font-bold text-xl text-indigo-600 cursor-default"
+                  className="bg-blue-50/50 border-none rounded-2xl p-7 font-mono font-bold text-xl text-[#2563EB] cursor-default"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -171,7 +170,7 @@ const CreateSessionPage = () => {
                   </label>
                   <input
                     type="time"
-                    className="w-full p-5 bg-gray-50 border-none rounded-2xl outline-none"
+                    className="w-full p-5 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
                   />
@@ -182,7 +181,7 @@ const CreateSessionPage = () => {
                   </label>
                   <input
                     type="time"
-                    className="w-full p-5 bg-gray-50 border-none rounded-2xl outline-none"
+                    className="w-full p-5 bg-gray-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
                   />
@@ -190,19 +189,18 @@ const CreateSessionPage = () => {
               </div>
             </div>
 
-            {/* Governance */}
             <div className="space-y-5 pt-4">
               <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                 Governance
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div
-                  className={`p-8 rounded-[2rem] border-2 cursor-pointer transition-all ${!approvalRequired ? "border-indigo-600 bg-indigo-50/30" : "border-gray-50 bg-gray-50/30"}`}
+                  className={`p-8 rounded-[2rem] border-2 cursor-pointer transition-all ${!approvalRequired ? "border-[#2563EB] bg-blue-50/30" : "border-gray-50 bg-gray-50/30"}`}
                   onClick={() => setApprovalRequired(false)}
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div
-                      className={`p-4 rounded-2xl ${!approvalRequired ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"}`}
+                      className={`p-4 rounded-2xl ${!approvalRequired ? "bg-[#2563EB] text-white" : "bg-gray-100 text-gray-400"}`}
                     >
                       <Zap size={24} />
                     </div>
@@ -212,12 +210,12 @@ const CreateSessionPage = () => {
                   </h4>
                 </div>
                 <div
-                  className={`p-8 rounded-[2rem] border-2 cursor-pointer transition-all ${approvalRequired ? "border-indigo-600 bg-indigo-50/30" : "border-gray-50 bg-gray-50/30"}`}
+                  className={`p-8 rounded-[2rem] border-2 cursor-pointer transition-all ${approvalRequired ? "border-[#2563EB] bg-blue-50/30" : "border-gray-50 bg-gray-50/30"}`}
                   onClick={() => setApprovalRequired(true)}
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div
-                      className={`p-4 rounded-2xl ${approvalRequired ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-400"}`}
+                      className={`p-4 rounded-2xl ${approvalRequired ? "bg-[#2563EB] text-white" : "bg-gray-100 text-gray-400"}`}
                     >
                       <ShieldCheck size={24} />
                     </div>
@@ -230,12 +228,12 @@ const CreateSessionPage = () => {
             </div>
           </div>
 
-          {/* Right Sidebar Info */}
           <div className="space-y-6">
-            <div className="bg-[#1E293B] p-10 rounded-[3rem] text-white relative overflow-hidden shadow-2xl shadow-indigo-200/50">
+            <div className="bg-[#1E293B] p-10 rounded-[3rem] text-white relative overflow-hidden shadow-2xl shadow-blue-200/50">
               <div className="relative z-10">
-                <div className="bg-indigo-500/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-10 border border-indigo-500/30">
-                  <Zap size={28} className="text-indigo-400 fill-indigo-400" />
+                {/* Thay màu tím cũ bằng sắc xanh lam phù hợp với chế độ Dark */}
+                <div className="bg-blue-500/20 w-14 h-14 rounded-2xl flex items-center justify-center mb-10 border border-blue-500/30">
+                  <Zap size={28} className="text-[#2563EB] fill-[#2563EB]" />
                 </div>
                 <h3 className="text-3xl font-bold mb-6 tracking-tight uppercase">
                   AI Integration
