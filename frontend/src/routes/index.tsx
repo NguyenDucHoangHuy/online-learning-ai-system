@@ -1,15 +1,35 @@
 import { createBrowserRouter } from "react-router-dom";
-import HomePage from "../pages/auth/HomePage";
 import LoginPage from "../pages/auth/LoginPage";
-import RegisterPage from "../pages/auth/RegisterPage";
-import NotFoundPage from "../pages/common/NotFoundPage";
-import { ROUTES } from "../constants";
+import DashboardPage from "../pages/teacher/DashboardPage";
+import { RealtimeMonitorPage } from "../pages/teacher/RealtimeMonitorPage";
+// 1. Thêm dòng import này
+import CreateSessionPage from "../pages/teacher/CreateSessionPage";
+import ManageClassesPage from "../pages/teacher/ManageClassesPage";
 
-const router = createBrowserRouter([
-  { path: ROUTES.HOME, element: <HomePage /> },
-  { path: ROUTES.LOGIN, element: <LoginPage /> },
-  { path: ROUTES.REGISTER, element: <RegisterPage /> },
-  { path: "*", element: <NotFoundPage /> },
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <DashboardPage />,
+  },
+  {
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
+    path: "/teacher/dashboard", // Nên có path rõ ràng cho Dashboard
+    element: <DashboardPage />,
+  },
+  {
+    path: "/teacher/realtime-monitor",
+    element: <RealtimeMonitorPage />,
+  },
+  // 2. ĐĂNG KÝ PATH NÀY ĐỂ HẾT LỖI 404
+  {
+    path: "/teacher/create-session",
+    element: <CreateSessionPage />,
+  },
+  {
+    path: "/teacher/manage-classes",
+    element: <ManageClassesPage />,
+  },
 ]);
-
-export default router;
