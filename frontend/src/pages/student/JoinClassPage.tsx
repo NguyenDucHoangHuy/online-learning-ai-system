@@ -1,108 +1,130 @@
-import React, { useState } from 'react';
-import Sidebar from '../../components/layout/SidebarStudent';
+// src/pages/student/JoinClassPage.tsx
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search, Clock, BookOpen, ArrowRight } from "lucide-react";
+import Sidebar from "../../components/layout/SidebarStudent"; // Giữ nguyên import sidebar của bạn
+import { ROUTES } from "../../constants";
 
+// Data mẫu cho các session đang diễn ra
 const ongoingSessions = [
-  {
-    id: 1,
-    title: 'Advanced Robotics Lab',
-    roomCode: 'ROBO-1',
-  },
-  {
-    id: 2,
-    title: 'Circuit Design Patterns',
-    roomCode: 'CIRC-2',
-  },
-  {
-    id: 3,
-    title: 'Digital Art & Geometry',
-    roomCode: 'ART-99',
-  },
-  {
-    id: 4,
-    title: 'Political Economics',
-    roomCode: 'POL-10',
-  },
+  { id: 1, title: "Advanced Robotics Lab", roomCode: "ROBO-1" },
+  { id: 2, title: "Circuit Design Patterns", roomCode: "CIRC-2" },
+  { id: 3, title: "Digital Art & Geometry", roomCode: "ART-99" },
+  { id: 4, title: "Political Economics", roomCode: "POL-10" },
 ];
 
-const JoinClassPage: React.FC = () => {
-  
-  const [roomCode, setRoomCode] = useState('');
+export default function JoinClassPage() {
+  const [roomCode, setRoomCode] = useState("");
+  const navigate = useNavigate();
 
   const handleJoinClass = (e: React.FormEvent) => {
     e.preventDefault();
-    alert(`Joining classroom: ${roomCode}`);
+    if (!roomCode.trim()) return;
+
+    // Điều hướng tới trang StudyRoom kèm theo mã code vừa nhập
+    navigate(ROUTES.STUDENT.ROOM.replace(":sessionId", roomCode));
   };
 
   return (
-    <div style={styles.pageContainer}>
-      {/* Sidebar cố định */}
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+      {/* Sidebar - Cần cấu hình fixed bên trong component này */}
       <Sidebar activeItem="Join Class" />
 
-      {/* Nội dung chính */}
-      <main style={styles.mainContent}>
-        {/* Tiêu đề */}
-        <div style={styles.headerContainer}>
-          <h1 style={styles.title}>Welcome back, !</h1>
-          <p style={styles.subtitle}>Ready to start your learning session?</p>
+      {/* Main Content Area */}
+      <main className="flex-1 ml-[330px] p-10 md:p-14 lg:p-20 overflow-y-auto">
+        {/* Header */}
+        <div className="mb-10">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 mb-2">
+            Welcome back, Hoàng Huy!
+          </h1>
+          <p className="text-slate-500 font-medium">
+            Ready to start your learning session?
+          </p>
         </div>
 
-        <div style={styles.contentGrid}>
-          {/* Form Join Class */}
-          <div style={styles.joinClassCard}>
-            <div style={styles.iconContainer}>
-              <span style={styles.searchIcon}>🔍</span>
-            </div>
-
+        {/* Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl">
+          {/* CARD 1: JOIN CLASSROOM (Trắng) */}
+          <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col h-[440px] justify-between">
             <div>
-              <h2 style={styles.cardTitle}>Join a Classroom</h2>
-              <p style={styles.cardSubtitle}>
-                Enter the unique session code provided by your teacher to enter the
-                live interactive environment.
+              <div className="w-14 h-14 bg-blue-600/10 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                <Search size={24} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                Join a Classroom
+              </h2>
+              <p className="text-sm text-slate-500 leading-relaxed max-w-sm">
+                Enter the unique session code provided by your teacher to enter
+                the live interactive environment.
               </p>
             </div>
 
-            <form onSubmit={handleJoinClass} style={styles.formGroup}>
-              <label style={styles.label}>ROOM CODE</label>
+            <form onSubmit={handleJoinClass} className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                Room Code
+              </label>
               <input
                 type="text"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value)}
-                placeholder="MATH-101"
-                style={styles.input}
+                placeholder="Ví dụ: MATH-101"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 text-sm font-medium focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all uppercase"
               />
-              <button type="submit" style={styles.submitBtn}>
-                Enter Classroom &#8594;
+              <button
+                type="submit"
+                className="w-full mt-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl py-4 text-sm font-bold tracking-wide flex items-center justify-center gap-2 transition-colors shadow-md shadow-slate-900/10"
+              >
+                Enter Classroom <ArrowRight size={18} />
               </button>
             </form>
           </div>
 
-          {/* Ongoing Sessions Card */}
-          <div style={styles.ongoingCard}>
-            <div style={styles.ongoingHeader}>
-              <div style={styles.clockIconBox}>⏱️</div>
+          {/* CARD 2: ONGOING SESSIONS (Xanh) */}
+          <div className="bg-blue-600 rounded-3xl p-8 shadow-xl shadow-blue-900/20 text-white flex flex-col h-[440px]">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center flex-shrink-0">
+                <Clock size={24} className="text-white" />
+              </div>
               <div>
-                <h2 style={styles.ongoingTitle}>Ongoing Sessions</h2>
-                <p style={styles.ongoingSubtitle}>
-                  Quickly jump back into active classes you are currently enrolled in.
+                <h2 className="text-2xl font-bold mb-2">Ongoing Sessions</h2>
+                <p className="text-blue-100 text-sm leading-relaxed">
+                  Quickly jump back into active classes you are currently
+                  enrolled in.
                 </p>
               </div>
             </div>
 
-            <div style={styles.sessionList}>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
               {ongoingSessions.map((session) => (
                 <div
                   key={session.id}
-                  style={styles.sessionItem}
-                  onClick={() => alert(`Joining ${session.title}`)}
+                  onClick={() =>
+                    navigate(
+                      ROUTES.STUDENT.ROOM.replace(
+                        ":sessionId",
+                        session.roomCode,
+                      ),
+                    )
+                  }
+                  className="bg-white/10 hover:bg-white/20 border border-white/5 rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all group"
                 >
-                  <div style={styles.sessionItemLeft}>
-                    <div style={styles.bookIconBox}>📖</div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                      <BookOpen size={18} className="text-blue-100" />
+                    </div>
                     <div>
-                      <h3 style={styles.sessionTitle}>{session.title}</h3>
-                      <span style={styles.sessionCode}>{session.roomCode}</span>
+                      <h3 className="font-bold text-sm text-white mb-0.5 group-hover:text-blue-50 transition-colors">
+                        {session.title}
+                      </h3>
+                      <p className="text-[11px] font-semibold text-blue-200/80 tracking-wider">
+                        {session.roomCode}
+                      </p>
                     </div>
                   </div>
-                  <span style={styles.arrowIcon}>&#8594;</span>
+                  <ArrowRight
+                    size={18}
+                    className="text-blue-200 group-hover:text-white group-hover:-translate-x-1 transition-all"
+                  />
                 </div>
               ))}
             </div>
@@ -111,198 +133,4 @@ const JoinClassPage: React.FC = () => {
       </main>
     </div>
   );
-};
-
-const styles: { [key: string]: React.CSSProperties } = {
-  pageContainer: {
-    display: 'flex',
-    minHeight: '100vh',
-    backgroundColor: '#f8fafc',
-    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-    color: '#0f172a',
-    paddingLeft: '270px', // Chừa khoảng trống cho Sidebar
-  },
-  mainContent: {
-    flex: 1,
-    padding: '48px 64px',
-    overflowY: 'auto',
-  },
-  headerContainer: {
-    marginBottom: '40px',
-  },
-  title: {
-    fontSize: '38px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: '0 0 6px 0',
-  },
-  subtitle: {
-    fontSize: '15px',
-    color: '#64748b',
-    margin: 0,
-    fontWeight: '500',
-  },
-  contentGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '28px',
-    alignItems: 'start',
-  },
-  joinClassCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: '28px',
-    padding: '40px',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.03)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '24px',
-    height: '420px',
-    justifyContent: 'space-between',
-  },
-  iconContainer: {
-    width: '46px',
-    height: '46px',
-    backgroundColor: '#eff6ff',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#3b82f6',
-    fontSize: '20px',
-  },
-  cardTitle: {
-    fontSize: '20px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: '0 0 8px 0',
-  },
-  cardSubtitle: {
-    fontSize: '12px',
-    lineHeight: '1.5',
-    color: '#64748b',
-    margin: 0,
-  },
-  formGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  label: {
-    fontSize: '9px',
-    fontWeight: '800',
-    letterSpacing: '1px',
-    color: '#94a3b8',
-  },
-  input: {
-    padding: '16px 20px',
-    fontSize: '15px',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-    backgroundColor: '#f8fafc',
-    color: '#0f172a',
-    outline: 'none',
-    transition: 'all 0.2s ease',
-  },
-  submitBtn: {
-    marginTop: '6px',
-    padding: '18px 24px',
-    backgroundColor: '#475569',
-    color: '#ffffff',
-    fontWeight: '800',
-    fontSize: '12px',
-    borderRadius: '12px',
-    border: 'none',
-    cursor: 'pointer',
-    letterSpacing: '0.4px',
-    transition: 'background-color 0.2s',
-  },
-  ongoingCard: {
-    backgroundColor: '#2563eb',
-    color: '#ffffff',
-    borderRadius: '28px',
-    padding: '40px',
-    boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.2)',
-    height: '420px',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-  },
-  ongoingHeader: {
-    display: 'flex',
-    gap: '20px',
-    alignItems: 'flex-start',
-  },
-  clockIconBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    width: '46px',
-    height: '46px',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '20px',
-    flexShrink: 0,
-  },
-  ongoingTitle: {
-    fontSize: '20px',
-    fontWeight: '800',
-    margin: '0 0 6px 0',
-    color: '#ffffff',
-  },
-  ongoingSubtitle: {
-    fontSize: '12px',
-    lineHeight: '1.4',
-    color: '#93c5fd',
-    margin: 0,
-  },
-  sessionList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-    marginTop: '12px',
-  },
-  sessionItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px 18px',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: '12px',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s ease',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
-  },
-  sessionItemLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '16px',
-  },
-  bookIconBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    width: '40px',
-    height: '40px',
-    borderRadius: '10px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '16px',
-  },
-  sessionTitle: {
-    fontSize: '12px',
-    fontWeight: '800',
-    margin: '0 0 4px 0',
-    color: '#ffffff',
-  },
-  sessionCode: {
-    fontSize: '10px',
-    color: '#93c5fd',
-    fontWeight: '700',
-  },
-  arrowIcon: {
-    fontSize: '14px',
-    color: '#93c5fd',
-  },
-};
-
-export default JoinClassPage;
+}

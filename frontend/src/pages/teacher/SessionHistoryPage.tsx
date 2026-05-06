@@ -1,109 +1,141 @@
-// frontend/src/pages/teacher/SessionHistoryPage.tsx
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import Sidebar from '../../components/layout/SidebarTeacher';
+// src/pages/teacher/SessionHistoryPage.tsx
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import { BarChart2, Calendar, Clock, Hash, Eye, Play } from "lucide-react";
+import SidebarTeacher from "../../components/layout/SidebarTeacher";
 
 const sessionData = [
   {
     id: 1,
-    title: 'NEURAL NETWORKS ARCHITECTURE',
-    date: '4/20/2026',
-    status: 'ARCHIVED',
-    idCode: 'ID: AI-902',
+    title: "NEURAL NETWORKS ARCHITECTURE",
+    date: "4/20/2026",
+    status: "ARCHIVED",
+    idCode: "AI-902",
     isActive: false,
   },
   {
     id: 2,
-    title: 'MACROECONOMIC PRINCIPLES',
-    date: '4/25/2026',
-    status: 'ARCHIVED',
-    idCode: 'ID: ECON-1',
+    title: "MACROECONOMIC PRINCIPLES",
+    date: "4/25/2026",
+    status: "ARCHIVED",
+    idCode: "ECON-1",
     isActive: false,
   },
   {
     id: 3,
-    title: 'QUANTUM COMPUTING INTRO',
-    date: '4/28/2026',
-    status: 'ARCHIVED',
-    idCode: 'ID: PHY-8',
+    title: "QUANTUM COMPUTING INTRO",
+    date: "4/28/2026",
+    status: "ARCHIVED",
+    idCode: "PHY-8",
     isActive: false,
   },
   {
     id: 4,
-    title: 'ADVANCED UX PATTERNS',
-    date: '5/6/2026',
-    status: 'ACTIVE CHANNEL',
-    idCode: 'ID: CS-505',
+    title: "ADVANCED UX PATTERNS",
+    date: "5/6/2026",
+    status: "ACTIVE CHANNEL",
+    idCode: "CS-505",
     isActive: true,
   },
 ];
 
-const SessionHistoryPage: React.FC = () => {
+export default function SessionHistoryPage() {
   const navigate = useNavigate();
 
   return (
-    <div style={styles.pageContainer}>
-      {/* Sử dụng component Sidebar */}
-      <Sidebar activeItem="History" />
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
+      {/* Sidebar Giáo viên */}
+      <SidebarTeacher activeItem="History" />
 
-      {/* --- Nội dung chính --- */}
-      <main style={styles.mainContent}>
-        <div style={styles.headerContainer}>
-          <h1 style={styles.title}>Session History</h1>
-          <p style={styles.subtitle}>
+      {/* Nội dung chính (Có margin-left để không bị đè bởi Sidebar) */}
+      <main className="flex-1 ml-[270px] p-10 md:p-14 lg:p-20 overflow-y-auto">
+        {/* Header */}
+        <div className="mb-10">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 mb-2">
+            Session History
+          </h1>
+          <p className="text-slate-500 font-medium">
             Review past classrooms and comprehensive emotional analysis reports
           </p>
         </div>
 
-        <div style={styles.sessionList}>
+        {/* Danh sách Session */}
+        <div className="flex flex-col gap-4 max-w-5xl">
           {sessionData.map((item) => (
-            <div key={item.id} style={styles.sessionCard}>
-              <div style={styles.cardLeft}>
-                <div style={styles.cardIcon}>📊</div>
-                <div style={styles.cardInfo}>
-                  <h3 style={styles.cardTitle}>{item.title}</h3>
-                  <div style={styles.metaContainer}>
-                    <span style={styles.metaItem}>
-                      📅 <span style={styles.metaText}>{item.date}</span>
-                    </span>
-                    <span
-                      style={
+            <div
+              key={item.id}
+              className={`bg-white rounded-2xl p-5 md:p-6 border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all group ${
+                item.isActive
+                  ? "border-blue-200 shadow-blue-900/5"
+                  : "border-slate-200 hover:border-slate-300"
+              }`}
+            >
+              {/* Phần thông tin bên trái */}
+              <div className="flex items-center gap-5 md:gap-6">
+                {/* Icon Box */}
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors ${
+                    item.isActive
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                      : "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
+                  }`}
+                >
+                  <BarChart2 size={24} />
+                </div>
+
+                {/* Chi tiết */}
+                <div>
+                  <h3 className="text-[15px] md:text-base font-bold text-slate-900 mb-3 tracking-wide">
+                    {item.title}
+                  </h3>
+
+                  <div className="flex flex-wrap items-center gap-4 md:gap-6 text-xs font-semibold text-slate-500">
+                    {/* Ngày tháng */}
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={14} className="text-slate-400" />
+                      <span className="text-slate-600">{item.date}</span>
+                    </div>
+
+                    {/* Trạng thái (Phân biệt Active / Archived) */}
+                    <div
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md ${
                         item.isActive
-                          ? styles.metaItemActive
-                          : styles.metaItemArchived
-                      }
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
                     >
-                      🕒{' '}
-                      <span
-                        style={
-                          item.isActive
-                            ? styles.metaTextActive
-                            : styles.metaTextArchived
-                        }
-                      >
-                        {item.status}
-                      </span>
-                    </span>
-                    <span style={styles.metaItem}>
-                      📖 <span style={styles.metaText}>{item.idCode}</span>
-                    </span>
+                      <Clock size={14} />
+                      <span className="tracking-wider">{item.status}</span>
+                    </div>
+
+                    {/* Mã phòng (ID Code) */}
+                    <div className="flex items-center gap-1.5 border-l border-slate-200 pl-4 md:pl-6">
+                      <Hash size={14} className="text-slate-400" />
+                      <span className="text-slate-600">ID: {item.idCode}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div style={styles.cardRight}>
+              {/* Nút thao tác bên phải */}
+              <div className="flex items-center gap-3 w-full md:w-auto mt-2 md:mt-0">
+                {/* Nút hiển thị riêng cho lớp đang Active */}
                 {item.isActive && (
                   <button
-                    style={styles.resumeBtn}
-                    onClick={() => alert(`Resuming pulse for ${item.title}`)}
+                    onClick={() => navigate(`/teacher/session/${item.idCode}`)}
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3.5 rounded-xl text-xs font-bold tracking-widest transition-colors shadow-md shadow-blue-600/20"
                   >
-                    👁️ RESUME PULSE
+                    <Play size={16} />
+                    RESUME PULSE
                   </button>
                 )}
+
+                {/* Nút mặc định cho tất cả các lớp */}
                 <button
-                  style={styles.inspectBtn}
-                  onClick={() => navigate('/teacher/session-report')}
+                  onClick={() => navigate("/teacher/session-report")}
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-6 py-3.5 rounded-xl text-xs font-bold tracking-widest transition-colors shadow-sm"
                 >
+                  <Eye size={16} />
                   INSPECT REPORT
                 </button>
               </div>
@@ -113,159 +145,4 @@ const SessionHistoryPage: React.FC = () => {
       </main>
     </div>
   );
-};
-
-const styles: { [key: string]: React.CSSProperties } = {
-  pageContainer: {
-    display: 'flex',
-    minHeight: '100vh',
-    backgroundColor: '#f8fafc',
-    fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-    color: '#0f172a',
-    paddingLeft: '270px', // Thêm dòng này để chừa chỗ cho Sidebar cố định
-  },
-  mainContent: {
-    flex: 1,
-    padding: '44px 64px',
-    overflowY: 'auto',
-  },
-  headerContainer: {
-    marginBottom: '32px',
-  },
-  title: {
-    fontSize: '36px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: '0 0 6px 0',
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: '#64748b',
-    margin: 0,
-    fontWeight: '500',
-  },
-  sessionList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '18px',
-  },
-  sessionCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: '16px',
-    padding: '16px 32px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-  },
-  cardLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '28px',
-  },
-  cardIcon: {
-    fontSize: '24px',
-    color: '#3b82f6',
-    backgroundColor: '#eff6ff',
-    width: '54px',
-    height: '54px',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  cardTitle: {
-    fontSize: '15px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: 0,
-  },
-  metaContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '24px',
-  },
-  metaItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '11px',
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  metaText: {
-    fontWeight: '700',
-    color: '#334155',
-  },
-  metaItemActive: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '10px',
-    backgroundColor: '#ecfdf5',
-    color: '#059669',
-    padding: '4px 10px',
-    borderRadius: '6px',
-    fontWeight: '700',
-  },
-  metaTextActive: {
-    color: '#059669',
-    fontWeight: '800',
-  },
-  metaItemArchived: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '10px',
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
-    padding: '4px 10px',
-    borderRadius: '6px',
-    fontWeight: '700',
-  },
-  metaTextArchived: {
-    color: '#475569',
-    fontWeight: '800',
-  },
-  cardRight: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  resumeBtn: {
-    backgroundColor: '#2563eb',
-    color: '#ffffff',
-    padding: '12px 20px',
-    borderRadius: '10px',
-    border: 'none',
-    fontWeight: '700',
-    fontSize: '11px',
-    cursor: 'pointer',
-    letterSpacing: '0.5px',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  },
-  inspectBtn: {
-    backgroundColor: '#ffffff',
-    color: '#0f172a',
-    padding: '12px 24px',
-    borderRadius: '10px',
-    border: '1px solid #e2e8f0',
-    fontWeight: '800',
-    fontSize: '11px',
-    cursor: 'pointer',
-    letterSpacing: '0.5px',
-    transition: 'all 0.2s ease',
-  },
-};
-
-export default SessionHistoryPage;
+}

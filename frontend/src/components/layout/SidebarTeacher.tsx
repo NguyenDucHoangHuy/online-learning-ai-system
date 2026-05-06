@@ -1,180 +1,153 @@
-import React from 'react';
+// src/components/layout/SidebarTeacher.tsx
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  BookOpen,
+  PlusCircle,
+  Clock,
+  User,
+  LogOut,
+} from "lucide-react";
 
 interface SidebarProps {
   onSignOut?: () => void;
   activeItem?: string;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onSignOut, activeItem = 'History' }) => {
+const SidebarTeacher: React.FC<SidebarProps> = ({
+  onSignOut,
+  activeItem = "Dashboard",
+}) => {
+  const navigate = useNavigate();
+
   return (
-    <aside style={styles.sidebar}>
-      {/* Phần trên cùng: Logo và Menu điều hướng */}
+    <aside className="w-[270px] h-screen bg-white border-r border-slate-200 flex flex-col justify-between p-6 md:p-8 fixed top-0 left-0 z-50">
+      {/* KHU VỰC TRÊN: Logo và Menu điều hướng */}
       <div>
-        <div style={styles.brandContainer}>
-          <div style={styles.brandLogo}>AI</div>
-          <div style={styles.brandText}>
-            <span style={styles.brandTitle}>EduSense</span>
-            <span style={styles.brandSubtitle}>PLATFORM</span>
+        {/* Brand Logo */}
+        <div className="flex items-center gap-3 mb-10">
+          <div className="bg-blue-600 text-white w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm">
+            AI
+          </div>
+          <div className="flex flex-col">
+            <span className="font-extrabold text-[15px] text-slate-900 leading-tight">
+              EduSense
+            </span>
+            <span className="text-[10px] text-slate-500 tracking-[0.15em] font-bold mt-0.5">
+              PLATFORM
+            </span>
           </div>
         </div>
 
-        <nav style={styles.navMenu}>
-          <div style={styles.navItem}>
-            <span style={styles.navIcon}>🗂️</span>
+        {/* Nav Menu */}
+        <nav className="flex flex-col gap-2">
+          {/* Dashboard */}
+          <button
+            onClick={() => navigate("/teacher/dashboard")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
+              activeItem === "Dashboard"
+                ? "bg-slate-100 text-slate-900"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <LayoutDashboard
+              size={18}
+              className={
+                activeItem === "Dashboard" ? "text-blue-600" : "text-slate-400"
+              }
+            />
             <span>Dashboard</span>
-          </div>
-          <div style={styles.navItem}>
-            <span style={styles.navIcon}>📖</span>
+          </button>
+
+          {/* Manage Classes */}
+          <button
+            onClick={() => navigate("/teacher/classes")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
+              activeItem === "Manage Classes"
+                ? "bg-slate-100 text-slate-900"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <BookOpen
+              size={18}
+              className={
+                activeItem === "Manage Classes"
+                  ? "text-blue-600"
+                  : "text-slate-400"
+              }
+            />
             <span>Manage Classes</span>
-          </div>
-          <div style={styles.navItem}>
-            <span style={styles.navIcon}>➕</span>
+          </button>
+
+          {/* Create Session */}
+          <button
+            onClick={() => navigate("/teacher/create-session")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
+              activeItem === "Create Session"
+                ? "bg-slate-100 text-slate-900"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <PlusCircle
+              size={18}
+              className={
+                activeItem === "Create Session"
+                  ? "text-blue-600"
+                  : "text-slate-400"
+              }
+            />
             <span>Create Session</span>
-          </div>
-          <div style={{ ...styles.navItem, ...(activeItem === 'History' ? styles.navItemActive : {}) }}>
-            <span style={styles.navIcon}>⏱️</span>
+          </button>
+
+          {/* History */}
+          <button
+            onClick={() => navigate("/teacher/history")}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
+              activeItem === "History"
+                ? "bg-slate-100 text-slate-900"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            }`}
+          >
+            <Clock
+              size={18}
+              className={
+                activeItem === "History" ? "text-blue-600" : "text-slate-400"
+              }
+            />
             <span>History</span>
-          </div>
+          </button>
         </nav>
       </div>
 
-      {/* Phần dưới cùng: User Profile và Sign Out cố định ở đáy */}
-      <div style={styles.bottomSection}>
-        <div style={styles.userProfile}>
-          <div style={styles.userAvatar}>👤</div>
-          <div style={styles.userDetails}>
-            <span style={styles.userName}>TEACHER</span>
+      {/* KHU VỰC DƯỚI: User Profile và Sign Out */}
+      <div className="border-t border-slate-100 pt-6">
+        {/* User Profile */}
+        <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0">
+            <User size={16} />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="text-xs font-bold text-slate-700 truncate">
+              HOÀNG HUY
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+              Giảng viên
+            </span>
           </div>
         </div>
-        <button style={styles.signOutBtn} onClick={onSignOut || (() => alert('Sign Out'))}>
-          <span style={styles.signOutIcon}>↪</span> Sign Out
+
+        {/* Sign Out Button */}
+        <button
+          onClick={onSignOut || (() => navigate("/login"))}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-red-200 text-red-500 font-bold text-xs rounded-xl hover:bg-red-50 transition-colors shadow-sm"
+        >
+          <LogOut size={14} />
+          Sign Out
         </button>
       </div>
     </aside>
   );
 };
 
-const styles: { [key: string]: React.CSSProperties } = {
-  sidebar: {
-    width: '270px',
-    height: '100vh', /* Chiều cao cố định bằng chiều cao màn hình */
-    backgroundColor: '#ffffff',
-    borderRight: '1px solid #f1f5f9',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    padding: '32px 24px',
-    position: 'fixed', /* Giữ sidebar cố định trên màn hình */
-    top: 0,
-    left: 0,
-    zIndex: 100, /* Đảm bảo luôn nằm trên các thành phần khác */
-  },
-  brandContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-    marginBottom: '40px',
-  },
-  brandLogo: {
-    backgroundColor: '#2563eb',
-    color: '#ffffff',
-    width: '38px',
-    height: '38px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '800',
-    fontSize: '12px',
-  },
-  brandText: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  brandTitle: {
-    fontWeight: '800',
-    fontSize: '14px',
-    color: '#0f172a',
-    lineHeight: '1.2',
-  },
-  brandSubtitle: {
-    fontSize: '9px',
-    color: '#64748b',
-    letterSpacing: '1.2px',
-    fontWeight: '700',
-    marginTop: '2px',
-  },
-  navMenu: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  navItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '16px',
-    padding: '10px 14px',
-    borderRadius: '8px',
-    color: '#64748b',
-    fontWeight: '600',
-    fontSize: '13px',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  },
-  navItemActive: {
-    backgroundColor: '#f1f5f9',
-    color: '#0f172a',
-  },
-  navIcon: {
-    fontSize: '16px',
-  },
-  bottomSection: {
-    borderTop: '1px solid #f1f5f9',
-    paddingTop: '20px',
-  },
-  userProfile: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '14px',
-    backgroundColor: '#f8fafc',
-    padding: '8px 12px',
-    borderRadius: '8px',
-  },
-  userAvatar: {
-    width: '30px',
-    height: '30px',
-    borderRadius: '6px',
-    backgroundColor: '#e2e8f0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userDetails: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  userName: {
-    fontSize: '11px',
-    fontWeight: '800',
-    color: '#64748b',
-  },
-  signOutBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    width: '100%',
-    padding: '10px',
-    backgroundColor: '#ffffff',
-    border: '1px solid #fecaca',
-    color: '#ef4444',
-    fontWeight: '700',
-    fontSize: '12px',
-    cursor: 'pointer',
-    borderRadius: '6px',
-    transition: 'all 0.2s',
-  },
-};
-
-export default Sidebar;
+export default SidebarTeacher;

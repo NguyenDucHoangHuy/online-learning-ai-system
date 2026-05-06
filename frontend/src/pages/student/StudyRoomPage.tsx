@@ -145,7 +145,7 @@ export default function StudyRoomPage() {
       </div>
 
       {/* KHU VỰC SIDEBAR: AI + Chat/Participants (Giữ nguyên) */}
-      <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-10 flex-shrink-0">
+      <div className="w-72 lg:w-80 hidden md:flex flex-col bg-slate-900 border-l border-slate-800 z-10 flex-shrink-0 transition-all">
         {/* AI Insight Card */}
         <div className="p-4 border-b border-slate-800">
           <div className="bg-emerald-950/30 border border-emerald-900/50 rounded-2xl p-4 flex items-start gap-3">
