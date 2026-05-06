@@ -1,19 +1,15 @@
 import { createBrowserRouter } from "react-router-dom";
+import HomePage from "../pages/auth/HomePage";
 import LoginPage from "../pages/auth/LoginPage";
-import DashboardPage from "../pages/teacher/DashboardPage";
-// import NotFoundPage from "../pages/common/NotFoundPage";
+import RegisterPage from "../pages/auth/RegisterPage";
+import NotFoundPage from "../pages/common/NotFoundPage";
+import { ROUTES } from "../constants";
 
-export const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <DashboardPage />,
-  },
-  {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  // {
-  //   path: "*",
-  //   element: <NotFoundPage />,
-  // },
+const router = createBrowserRouter([
+  { path: ROUTES.HOME, element: <HomePage /> },
+  { path: ROUTES.LOGIN, element: <LoginPage /> },
+  { path: ROUTES.REGISTER, element: <RegisterPage /> },
+  { path: "*", element: <NotFoundPage /> },
 ]);
+
+export default router;
