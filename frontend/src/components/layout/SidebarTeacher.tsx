@@ -9,6 +9,7 @@ import {
   User,
   LogOut,
 } from "lucide-react";
+import { ROUTES } from "../../constants"; // Import ROUTES
 
 interface SidebarProps {
   onSignOut?: () => void;
@@ -44,7 +45,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({
         <nav className="flex flex-col gap-2">
           {/* Dashboard */}
           <button
-            onClick={() => navigate("/teacher/dashboard")}
+            onClick={() => navigate(ROUTES.TEACHER.DASHBOARD)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               activeItem === "Dashboard"
                 ? "bg-slate-100 text-slate-900"
@@ -62,7 +63,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({
 
           {/* Manage Classes */}
           <button
-            onClick={() => navigate("/teacher/classes")}
+            onClick={() => navigate(ROUTES.TEACHER.CLASSES)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               activeItem === "Manage Classes"
                 ? "bg-slate-100 text-slate-900"
@@ -82,7 +83,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({
 
           {/* Create Session */}
           <button
-            onClick={() => navigate("/teacher/create-session")}
+            onClick={() => navigate(ROUTES.TEACHER.CREATE_SESSION)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               activeItem === "Create Session"
                 ? "bg-slate-100 text-slate-900"
@@ -102,7 +103,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({
 
           {/* History */}
           <button
-            onClick={() => navigate("/teacher/history")}
+            onClick={() => navigate(ROUTES.TEACHER.HISTORY)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               activeItem === "History"
                 ? "bg-slate-100 text-slate-900"
@@ -139,7 +140,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({
 
         {/* Sign Out Button */}
         <button
-          onClick={onSignOut || (() => navigate("/login"))}
+          onClick={onSignOut || (() => navigate(ROUTES.LOGIN))}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-red-200 text-red-500 font-bold text-xs rounded-xl hover:bg-red-50 transition-colors shadow-sm"
         >
           <LogOut size={14} />

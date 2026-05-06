@@ -30,12 +30,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo - Cập nhật sang Indigo đồng bộ với Dashboard */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100">
             <BookOpen size={20} className="text-white" />
           </div>
           <div>
             <p className="font-bold text-gray-900 leading-none">EduSense</p>
-            <p className="text-[10px] text-indigo-500 uppercase font-bold tracking-widest">
+            <p className="text-[10px] text-blue-500 uppercase font-bold tracking-widest">
               Platform
             </p>
           </div>
@@ -63,7 +63,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="example@email.com"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50 transition-all"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50 transition-all"
               />
             </div>
 
@@ -77,12 +77,12 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Nhập mật khẩu"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50 transition-all pr-11"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50 transition-all pr-11"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -91,7 +91,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-all mt-2 shadow-md shadow-indigo-100 active:scale-[0.98]"
+              className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all mt-2 shadow-md shadow-blue-100 active:scale-[0.98]"
             >
               Đăng nhập
             </button>
@@ -101,7 +101,7 @@ export default function LoginPage() {
             Chưa có tài khoản?{" "}
             <Link
               to={ROUTES.REGISTER}
-              className="text-indigo-600 font-bold hover:underline"
+              className="text-blue-600 font-bold hover:underline"
             >
               Đăng ký ngay
             </Link>
@@ -111,7 +111,7 @@ export default function LoginPage() {
         <p className="text-center text-xs text-gray-400 mt-6">
           <Link
             to={ROUTES.HOME}
-            className="hover:text-indigo-600 font-bold transition-colors"
+            className="hover:text-blue-600 font-bold transition-colors"
           >
             ← Về trang chủ
           </Link>

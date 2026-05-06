@@ -1,13 +1,7 @@
 // src/pages/student/MyLearningPage.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  BookOpen,
-  Calendar,
-  CheckCircle2,
-  MapPin,
-  BarChart2,
-} from "lucide-react";
+import { Calendar, CheckCircle2, MapPin, BarChart2 } from "lucide-react";
 import Sidebar from "../../components/layout/SidebarStudent";
 
 // Data mẫu

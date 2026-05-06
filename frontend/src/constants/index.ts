@@ -3,14 +3,17 @@ export const ROUTES = {
   LOGIN: "/login",
   REGISTER: "/register",
   STUDENT: {
-    JOIN: "/student/join",
+    JOIN: "/student",
     ROOM: "/student/room/:sessionId",
-    HISTORY: "/student/history",
+    HISTORY: "/student/my-learning",
   },
   TEACHER: {
     DASHBOARD: "/teacher/dashboard",
-    CLASSES: "/teacher/classes",
+    CLASSES: "/teacher/manage-classes", // Khai báo chuẩn ở đây
+    CREATE_SESSION: "/teacher/create-session",
     SESSION: "/teacher/session/:sessionId",
+    HISTORY: "/teacher/session-history",
+    REPORT: "/teacher/session-report",
   },
 } as const;
 

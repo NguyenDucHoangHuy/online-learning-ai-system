@@ -1,3 +1,4 @@
+// src/routes/index.tsx
 import { createBrowserRouter } from "react-router-dom";
 
 // Public pages
@@ -16,7 +17,6 @@ import DashboardPage from "../pages/teacher/DashboardPage";
 import TeachingRoomPage from "../pages/teacher/TeachingRoomPage";
 import CreateSessionPage from "../pages/teacher/CreateSessionPage";
 import ManageClassesPage from "../pages/teacher/ManageClassesPage";
-import { RealtimeMonitorPage } from "../pages/teacher/RealtimeMonitorPage";
 import SessionHistoryPage from "../pages/teacher/SessionHistoryPage";
 import SessionReportPage from "../pages/teacher/SessionReportPage";
 
@@ -39,45 +39,41 @@ const router = createBrowserRouter([
 
   // ================= STUDENT =================
   {
+    path: ROUTES.STUDENT.JOIN,
+    element: <JoinClassPage />,
+  },
+  {
     path: ROUTES.STUDENT.ROOM,
     element: <StudyRoomPage />,
   },
   {
-    path: "/student/my-learning",
+    path: ROUTES.STUDENT.HISTORY,
     element: <MyLearningPage />,
-  },
-  {
-    path: "/student",
-    element: <JoinClassPage />,
   },
 
   // ================= TEACHER =================
   {
-    path: ROUTES.TEACHER.DASHBOARD || "/teacher/dashboard",
+    path: ROUTES.TEACHER.DASHBOARD,
     element: <DashboardPage />,
+  },
+  {
+    path: ROUTES.TEACHER.CLASSES,
+    element: <ManageClassesPage />,
+  },
+  {
+    path: ROUTES.TEACHER.CREATE_SESSION,
+    element: <CreateSessionPage />,
   },
   {
     path: ROUTES.TEACHER.SESSION,
     element: <TeachingRoomPage />,
   },
   {
-    path: "/teacher/create-session",
-    element: <CreateSessionPage />,
-  },
-  {
-    path: "/teacher/manage-classes",
-    element: <ManageClassesPage />,
-  },
-  {
-    path: "/teacher/realtime-monitor",
-    element: <RealtimeMonitorPage />,
-  },
-  {
-    path: "/teacher/session-history",
+    path: ROUTES.TEACHER.HISTORY,
     element: <SessionHistoryPage />,
   },
   {
-    path: "/teacher/session-report",
+    path: ROUTES.TEACHER.REPORT,
     element: <SessionReportPage />,
   },
 

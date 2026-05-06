@@ -7,7 +7,6 @@ import {
   MessageSquare,
   BrainCircuit,
   Send,
-  User,
   Users,
   MonitorUp, // Thêm icon chia sẻ màn hình
 } from "lucide-react";
