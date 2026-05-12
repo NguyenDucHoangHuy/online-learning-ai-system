@@ -1,0 +1,16 @@
+# Database commit lên git, không có giá trị thật
+DB_USER=
+DB_PASSWORD=
+DB_NAME=
+DB_HOST=localhost
+DB_PORT=5432
+
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=public"
+
+# Server
+PORT=3000 
+NODE_ENV=development
+
+# JWT
+JWT_SECRET=
+JWT_EXPIRES_IN=7d

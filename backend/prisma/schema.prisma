@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  STUDENT
+  TEACHER
+}
+
+enum SessionStatus {
+  WAITING
+  ACTIVE
+  ENDED
+}
+
+enum JoinStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  LEFT
+}
+
+enum Emotion {
+  HAPPY
+  SAD
+  ANGRY
+  SURPRISED
+  FEAR
+  DISGUSTED
+  NEUTRAL
+}
+
+enum AttentionLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ==================== MODELS ====================
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String   @map("full_name")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  classes             Class[]
+  sessionParticipants SessionParticipant[]
+  chatMessages        ChatMessage[]
+
+  @@map("users")
+}
+
+model Class {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  teacherId   String   @map("teacher_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  teacher  User           @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  sessions ClassSession[]
+
+  @@map("classes")
+}
+
+model ClassSession {
+  id              String        @id @default(uuid())
+  classId         String        @map("class_id")
+  title           String
+  sessionCode     String        @unique @map("session_code")
+  status          SessionStatus @default(WAITING)
+  requireApproval Boolean       @default(false) @map("require_approval")
+  startedAt       DateTime?     @map("started_at")
+  endedAt         DateTime?     @map("ended_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  class         Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  participants  SessionParticipant[]
+  chatMessages  ChatMessage[]
+
+  @@map("class_sessions")
+}
+
+model SessionParticipant {
+  id            String     @id @default(uuid())
+  sessionId     String     @map("session_id")
+  studentId     String     @map("student_id")
+  joinStatus    JoinStatus @default(PENDING) @map("join_status")
+  attemptNumber Int        @default(1) @map("attempt_number")
+  joinedAt      DateTime?  @map("joined_at")
+  leftAt        DateTime?  @map("left_at")
+
+  // Relations
+  session      ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student      User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  emotionLogs  EmotionLog[]
+
+  @@index([sessionId])
+  @@index([studentId])
+  @@map("session_participants")
+}
+
+model EmotionLog {
+  id             String         @id @default(uuid())
+  participantId  String         @map("participant_id")
+  emotion        Emotion
+  confidence     Float
+  attentionLevel AttentionLevel @map("attention_level")
+  recordedAt     DateTime       @default(now()) @map("recorded_at")
+
+  // Relations
+  participant SessionParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+  @@index([recordedAt])
+  @@map("emotion_logs")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  userId    String   @map("user_id")
+  message   String
+  sentAt    DateTime @default(now()) @map("sent_at")
+
+  // Relations
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("chat_messages")
+}
