@@ -6,6 +6,8 @@ import morgan from "morgan";
 import { env } from "./config/env";
 import authRoutes from "./modules/auth/auth.route";
 import usersRoutes from "./modules/users/users.route";
+import sessionsRoutes from "./modules/sessions/sessions.route";
+import participantsRoutes from "./modules/participants/participants.route";
 import { errorMiddleware } from "./common/middleware/error.middleware";
 import { notFoundMiddleware } from "./common/middleware/not-found.middleware";
 import classesRoutes from "./modules/classes/classes.route";
@@ -31,6 +33,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/classes", classesRoutes);
+app.use("/api/sessions", sessionsRoutes);
+app.use("/api/participants", participantsRoutes);
 
 app.use(notFoundMiddleware);
 
