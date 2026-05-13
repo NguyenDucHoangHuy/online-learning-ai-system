@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from "express";
-import { sendError } from "../utils/response.util";
-import { HTTP_STATUS } from "../constants";
+import { Prisma } from "@prisma/client";
+
+import { HTTP_STATUS, MESSAGES } from "../constants";
+import { sendResponse } from "../utils/response.util";
 
 export class AppError extends Error {
   statusCode: number;
 
   constructor(message: string, statusCode: number) {
     super(message);
+
     this.statusCode = statusCode;
+
     Error.captureStackTrace(this, this.constructor);
   }
 }
@@ -17,23 +21,23 @@ export const errorMiddleware = (
   _req: Request,
   res: Response,
   _next: NextFunction,
-): void => {
-  console.error("❌ Error:", err.message);
+) => {
+  console.error(err);
 
   if (err instanceof AppError) {
-    sendError(res, err.message, err.statusCode);
-    return;
+    return sendResponse(res, err.statusCode, err.message);
   }
 
-  // Prisma errors
-  if (err.message.includes("Unique constraint")) {
-    sendError(res, "Resource already exists", HTTP_STATUS.CONFLICT);
-    return;
+  if (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002"
+  ) {
+    return sendResponse(res, HTTP_STATUS.CONFLICT, "Resource already exists");
   }
 
-  sendError(res, "Internal server error", HTTP_STATUS.INTERNAL_SERVER_ERROR);
-};
-
-export const notFoundMiddleware = (req: Request, res: Response): void => {
-  sendError(res, `Route ${req.originalUrl} not found`, HTTP_STATUS.NOT_FOUND);
+  return sendResponse(
+    res,
+    HTTP_STATUS.INTERNAL_SERVER_ERROR,
+    MESSAGES.INTERNAL_SERVER_ERROR,
+  );
 };

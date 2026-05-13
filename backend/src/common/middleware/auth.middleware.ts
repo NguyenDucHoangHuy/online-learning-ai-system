@@ -1,58 +1,44 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+
 import { env } from "../../config/env";
-import { sendError } from "../utils/response.util";
 import { HTTP_STATUS, MESSAGES } from "../constants";
-import { Role } from "@prisma/client";
-
-export interface JwtPayload {
-  userId: string;
-  email: string;
-  role: Role;
-}
-
-// Extend Express Request
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
-  }
-}
+import { sendResponse } from "../utils/response.util";
 
 export const authenticate = (
   req: Request,
   res: Response,
   next: NextFunction,
-): void => {
+) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    sendError(res, MESSAGES.TOKEN_MISSING, HTTP_STATUS.UNAUTHORIZED);
-    return;
+    return sendResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
   }
 
-  const token = authHeader.split(" ")[1];
+  const [, token] = authHeader.split(" ");
 
   try {
-    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(
+      token,
+      env.JWT_SECRET,
+    ) as Express.Request["user"];
+
     req.user = decoded;
+
     next();
   } catch {
-    sendError(res, MESSAGES.TOKEN_INVALID, HTTP_STATUS.UNAUTHORIZED);
+    return sendResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
   }
 };
 
-export const authorizeRoles = (...roles: Role[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      sendError(res, MESSAGES.UNAUTHORIZED, HTTP_STATUS.UNAUTHORIZED);
-      return;
-    }
+// Thêm vào dưới cùng của src/common/middleware/auth.middleware.ts
+export const authorize = (roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const userRole = req.user?.role;
 
-    if (!roles.includes(req.user.role)) {
-      sendError(res, MESSAGES.FORBIDDEN, HTTP_STATUS.FORBIDDEN);
-      return;
+    if (!userRole || !roles.includes(userRole)) {
+      return sendResponse(res, HTTP_STATUS.FORBIDDEN, MESSAGES.FORBIDDEN);
     }
 
     next();
