@@ -7,6 +7,8 @@ import { env } from "./config/env";
 
 import authRoutes from "./modules/auth/auth.route";
 import usersRoutes from "./modules/users/users.route";
+import sessionsRoutes from "./modules/sessions/sessions.route";
+import participantsRoutes from "./modules/participants/participants.route";
 import classesRoutes from "./modules/classes/classes.route";
 
 // thêm import
@@ -40,6 +42,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 
 app.use("/api/classes", classesRoutes);
+app.use("/api/sessions", sessionsRoutes);
+app.use("/api/participants", participantsRoutes);
 
 // thêm routes mới
 app.use("/api/chat", chatRoutes);
