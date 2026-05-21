@@ -27,14 +27,14 @@ enum JoinStatus {
   LEFT
 }
 
-enum Emotion {
+enum EmotionType {
   HAPPY
   SAD
   ANGRY
-  SURPRISED
-  FEAR
-  DISGUSTED
   NEUTRAL
+  SURPRISED
+  FEARFUL
+  DISGUSTED
 }
 
 enum AttentionLevel {
@@ -119,7 +119,7 @@ model SessionParticipant {
 model EmotionLog {
   id             String         @id @default(uuid())
   participantId  String         @map("participant_id")
-  emotion        Emotion
+  emotion        EmotionType
   confidence     Float
   attentionLevel AttentionLevel @map("attention_level")
   recordedAt     DateTime       @default(now()) @map("recorded_at")
@@ -129,6 +129,8 @@ model EmotionLog {
 
   @@index([participantId])
   @@index([recordedAt])
+  @@index([participantId, recordedAt(sort: Desc)])
+
   @@map("emotion_logs")
 }
 

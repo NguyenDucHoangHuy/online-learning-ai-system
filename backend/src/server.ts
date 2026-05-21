@@ -1,28 +1,14 @@
 import { createServer } from "http";
-import { Server } from "socket.io";
 import app from "./app";
 import { env } from "./config/env";
 import { prisma } from "./prisma/client";
+import { initSocketServer } from "./sockets/socket.server";
 
 const httpServer = createServer(app);
 
-// Socket.IO setup (sẽ viết chi tiết sau)
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
+// Khởi tạo Socket.IO gắn vào cùng HTTP server
+initSocketServer(httpServer);
 
-io.on("connection", (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
-
-  socket.on("disconnect", () => {
-    console.log(`Socket disconnected: ${socket.id}`);
-  });
-});
-
-// Start server
 async function bootstrap() {
   try {
     await prisma.$connect();
