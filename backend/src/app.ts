@@ -24,7 +24,7 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: "*",
+    origin: env.CLIENT_URL || "http://localhost:5173", // URL của Vite/React frontend
     credentials: true,
   }),
 );
@@ -42,8 +42,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 
 app.use("/api/classes", classesRoutes);
-app.use("/api/sessions", sessionsRoutes);
-app.use("/api/participants", participantsRoutes);
+app.use("/api", sessionsRoutes);
+app.use("/api", participantsRoutes);
 
 // thêm routes mới
 app.use("/api/chat", chatRoutes);

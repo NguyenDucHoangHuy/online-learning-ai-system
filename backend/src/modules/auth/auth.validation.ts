@@ -1,18 +1,30 @@
-import { Role } from "@prisma/client";
-import { z } from "zod";
+import { Request, Response, NextFunction } from "express";
 
-export const registerSchema = z.object({
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
+import {
+  loginSchema,
+  logoutSchema,
+  refreshTokenSchema,
+  registerSchema,
+} from "./auth.dto";
 
-  email: z.email("Invalid email address").toLowerCase(),
+export const authValidation = {
+  register: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = registerSchema.parse(req.body);
+    next();
+  },
 
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  login: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = loginSchema.parse(req.body);
+    next();
+  },
 
-  role: z.enum([Role.STUDENT, Role.TEACHER]),
-});
+  refresh: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = refreshTokenSchema.parse(req.body);
+    next();
+  },
 
-export const loginSchema = z.object({
-  email: z.email("Invalid email address").toLowerCase(),
-
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+  logout: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = logoutSchema.parse(req.body);
+    next();
+  },
+};

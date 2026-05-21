@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { Role } from "@prisma/client";
 
-import { classesController } from "./classes.controller";
+import * as classesController from "./classes.controller";
 
 import { classesValidation } from "./classes.validation";
 
@@ -13,13 +13,15 @@ import {
 
 const router = Router();
 
+// ==================== AUTHORIZATION ====================
 router.use(authenticate);
 
 router.use(authorize([Role.TEACHER]));
 
+// ==================== ROUTES ====================
 router.post("/", classesValidation.createClass, classesController.createClass);
 
-router.get("/my", classesController.getMyClasses);
+router.get("/", classesController.getMyClasses);
 
 router.get("/:classId", classesController.getClassById);
 

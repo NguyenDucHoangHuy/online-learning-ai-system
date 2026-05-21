@@ -58,7 +58,7 @@ model User {
   classes             Class[]
   sessionParticipants SessionParticipant[]
   chatMessages        ChatMessage[]
-
+  refreshTokens       RefreshToken[] 
   @@map("users")
 }
 
@@ -145,4 +145,18 @@ model ChatMessage {
 
   @@index([sessionId])
   @@map("chat_messages")
+}
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
 }

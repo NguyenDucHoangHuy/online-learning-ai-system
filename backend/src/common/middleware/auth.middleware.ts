@@ -25,14 +25,18 @@ export const authenticate = (
     ) as Express.Request["user"];
 
     req.user = decoded;
-
     next();
-  } catch {
+  } catch (error) {
+    // Bắt chính xác lỗi hết hạn token của jsonwebtoken
+    if (error instanceof jwt.TokenExpiredError) {
+      return sendResponse(res, HTTP_STATUS.UNAUTHORIZED, "Token expired");
+    }
+
+    // Các lỗi khác (sai chữ ký, token bị sửa đổi...)
     return sendResponse(res, HTTP_STATUS.UNAUTHORIZED, MESSAGES.UNAUTHORIZED);
   }
 };
 
-// Thêm vào dưới cùng của src/common/middleware/auth.middleware.ts
 export const authorize = (roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const userRole = req.user?.role;

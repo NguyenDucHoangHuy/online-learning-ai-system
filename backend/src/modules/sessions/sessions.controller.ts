@@ -1,20 +1,87 @@
 import { Request, Response } from "express";
+
 import { sessionsService } from "./sessions.service";
+
 import { HTTP_STATUS, MESSAGES } from "../../common/constants";
+
 import { sendResponse } from "../../common/utils/response.util";
+
 import { asyncHandler } from "../../common/utils/async-handler.util";
 
 export const sessionsController = {
   createSession: asyncHandler(async (req: Request, res: Response) => {
     const teacherId = req.user!.id;
-    const result = await sessionsService.createSession(teacherId, req.body);
 
-    return sendResponse(res, HTTP_STATUS.CREATED, MESSAGES.SUCCESS, result);
+    const result = await sessionsService.createSession(
+      req.params.classId,
+      teacherId,
+      req.body,
+    );
+
+    return sendResponse(
+      res,
+      HTTP_STATUS.CREATED,
+      MESSAGES.SESSION_CREATED,
+      result,
+    );
+  }),
+
+  getSessionsByClass: asyncHandler(async (req: Request, res: Response) => {
+    const teacherId = req.user!.id;
+
+    const result = await sessionsService.getSessionsByClass(
+      req.params.classId,
+      teacherId,
+    );
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
+  getSessionById: asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const userRole = req.user!.role;
+
+    const result = await sessionsService.getSessionById(
+      req.params.sessionId,
+      userId,
+      userRole,
+    );
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
+  startSession: asyncHandler(async (req: Request, res: Response) => {
+    const teacherId = req.user!.id;
+
+    const result = await sessionsService.startSession(
+      req.params.sessionId,
+      teacherId,
+    );
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SESSION_STARTED, result);
   }),
 
   endSession: asyncHandler(async (req: Request, res: Response) => {
     const teacherId = req.user!.id;
-    const result = await sessionsService.endSession(req.params.sessionId, teacherId);
+
+    const result = await sessionsService.endSession(
+      req.params.sessionId,
+      teacherId,
+    );
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SESSION_ENDED, result);
+  }),
+
+  lookupSession: asyncHandler(async (req: Request, res: Response) => {
+    const result = await sessionsService.lookupSession(req.params.sessionCode);
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
+  getMyHistory: asyncHandler(async (req: Request, res: Response) => {
+    const studentId = req.user!.id;
+
+    const result = await sessionsService.getMyHistory(studentId);
 
     return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
   }),

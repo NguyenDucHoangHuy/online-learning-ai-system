@@ -6,103 +6,124 @@ import { AppError } from "../../common/middleware/error.middleware";
 
 import { CreateClassDto, UpdateClassDto } from "./classes.dto";
 
-export const classesService = {
-  createClass: async (teacherId: string, data: CreateClassDto) => {
-    const newClass = await prisma.class.create({
-      data: {
-        name: data.name,
-        description: data.description,
-        teacherId,
-      },
-    });
+const findOwnedClass = async (classId: string, teacherId: string) => {
+  const foundClass = await prisma.class.findFirst({
+    where: {
+      id: classId,
+      teacherId,
+    },
+  });
 
-    return newClass;
-  },
+  if (!foundClass) {
+    throw new AppError(MESSAGES.CLASS_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
 
-  getMyClasses: async (teacherId: string) => {
-    const classes = await prisma.class.findMany({
-      where: {
-        teacherId,
-      },
+  return foundClass;
+};
 
-      include: {
-        _count: {
-          select: {
-            sessions: true,
-          },
+export const createClass = async (teacherId: string, data: CreateClassDto) => {
+  const newClass = await prisma.class.create({
+    data: {
+      name: data.name,
+      description: data.description,
+      teacherId,
+    },
+
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      teacherId: true,
+      createdAt: true,
+    },
+  });
+
+  return newClass;
+};
+
+export const getMyClasses = async (teacherId: string) => {
+  const classes = await prisma.class.findMany({
+    where: {
+      teacherId,
+    },
+
+    include: {
+      _count: {
+        select: {
+          sessions: true,
         },
       },
+    },
 
-      orderBy: {
-        createdAt: "desc",
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return classes;
+};
+
+export const getClassById = async (classId: string, teacherId: string) => {
+  // Thay vì gọi findOwnedClass rồi gọi lại findUnique, ta lấy trực tiếp luôn:
+  const foundClass = await prisma.class.findFirst({
+    where: {
+      id: classId,
+      teacherId, // Ép quyền sở hữu ngay trong lệnh truy vấn
+    },
+    include: {
+      sessions: {
+        orderBy: {
+          createdAt: "desc",
+        },
       },
-    });
-
-    return classes;
-  },
-
-  getClassById: async (classId: string, teacherId: string) => {
-    const foundClass = await prisma.class.findFirst({
-      where: {
-        id: classId,
-        teacherId,
+      _count: {
+        select: {
+          sessions: true,
+        },
       },
+    },
+  });
 
-      include: {
-        sessions: true,
-      },
-    });
+  if (!foundClass) {
+    throw new AppError(MESSAGES.CLASS_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
 
-    if (!foundClass) {
-      throw new AppError(MESSAGES.CLASS_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-    }
+  return foundClass;
+};
 
-    return foundClass;
-  },
+export const updateClass = async (
+  classId: string,
+  teacherId: string,
+  data: UpdateClassDto,
+) => {
+  await findOwnedClass(classId, teacherId);
 
-  updateClass: async (
-    classId: string,
-    teacherId: string,
-    data: UpdateClassDto,
-  ) => {
-    const existingClass = await prisma.class.findFirst({
-      where: {
-        id: classId,
-        teacherId,
-      },
-    });
+  const updatedClass = await prisma.class.update({
+    where: {
+      id: classId,
+    },
 
-    if (!existingClass) {
-      throw new AppError(MESSAGES.CLASS_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-    }
+    data: {
+      ...data,
+    },
 
-    const updatedClass = await prisma.class.update({
-      where: {
-        id: classId,
-      },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      updatedAt: true,
+    },
+  });
 
-      data,
-    });
+  return updatedClass;
+};
 
-    return updatedClass;
-  },
+export const deleteClass = async (classId: string, teacherId: string) => {
+  await findOwnedClass(classId, teacherId);
 
-  deleteClass: async (classId: string, teacherId: string) => {
-    const existingClass = await prisma.class.findFirst({
-      where: {
-        id: classId,
-        teacherId,
-      },
-    });
-
-    if (!existingClass) {
-      throw new AppError(MESSAGES.CLASS_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
-    }
-
-    await prisma.class.delete({
-      where: {
-        id: classId,
-      },
-    });
-  },
+  await prisma.class.delete({
+    where: {
+      id: classId,
+    },
+  });
 };

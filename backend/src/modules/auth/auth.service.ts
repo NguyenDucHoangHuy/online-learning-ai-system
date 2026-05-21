@@ -1,12 +1,61 @@
 import bcrypt from "bcryptjs";
 
 import { prisma } from "../../prisma/client";
+import { Role } from "@prisma/client"; // Đảm bảo dùng đúng Enum từ Prisma
 
 import { HTTP_STATUS, MESSAGES } from "../../common/constants";
 import { AppError } from "../../common/middleware/error.middleware";
-import { generateToken } from "../../common/utils/jwt.util";
 
+import { jwtUtil } from "../../common/utils/jwt.util";
+import { env } from "../../config/env";
 import { LoginDto, RegisterDto } from "./auth.dto";
+
+// Hàm tiện ích tự động bóc tách số ngày từ biến môi trường JWT_REFRESH_EXPIRES_IN (Ví dụ: "7d" -> 7)
+const parseRefreshTokenDays = (): number => {
+  const val = env.JWT_REFRESH_EXPIRES_IN; // "7d"
+  const match = val.match(/^(\d+)d$/);
+  return match ? parseInt(match[1], 10) : 7; // Fallback về 7 ngày nếu parse lỗi
+};
+
+const buildAuthResponse = async (user: {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+}) => {
+  const accessToken = jwtUtil.generateAccessToken({
+    id: user.id,
+    role: user.role,
+  });
+
+  const rawRefreshToken = jwtUtil.generateRawRefreshToken();
+
+  const hashedRefreshToken = jwtUtil.hashToken(rawRefreshToken);
+
+  const expiresAt = new Date();
+
+  const refreshDays = parseRefreshTokenDays();
+  expiresAt.setDate(expiresAt.getDate() + refreshDays);
+
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      token: hashedRefreshToken,
+      expiresAt,
+    },
+  });
+
+  return {
+    accessToken,
+    refreshToken: rawRefreshToken,
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+    },
+  };
+};
 
 export const register = async (payload: RegisterDto) => {
   const existingUser = await prisma.user.findUnique({
@@ -26,24 +75,11 @@ export const register = async (payload: RegisterDto) => {
       fullName: payload.fullName,
       email: payload.email,
       passwordHash: hashedPassword,
-      role: payload.role,
+      role: payload.role, // Zod đã đảm bảo payload.role khớp với chuẩn Role Enum
     },
   });
 
-  const token = generateToken({
-    id: user.id,
-    role: user.role,
-  });
-
-  return {
-    token,
-    user: {
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
-    },
-  };
+  return buildAuthResponse(user);
 };
 
 export const login = async (payload: LoginDto) => {
@@ -66,20 +102,54 @@ export const login = async (payload: LoginDto) => {
     throw new AppError(MESSAGES.INVALID_CREDENTIALS, HTTP_STATUS.UNAUTHORIZED);
   }
 
-  const token = generateToken({
-    id: user.id,
-    role: user.role,
+  return buildAuthResponse(user);
+};
+
+export const refresh = async (refreshToken: string) => {
+  const hashedToken = jwtUtil.hashToken(refreshToken);
+
+  const existingToken = await prisma.refreshToken.findUnique({
+    where: {
+      token: hashedToken,
+    },
+    include: {
+      user: true,
+    },
   });
 
-  return {
-    token,
-    user: {
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
+  if (!existingToken) {
+    throw new AppError(MESSAGES.UNAUTHORIZED, HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  if (existingToken.expiresAt < new Date()) {
+    await prisma.refreshToken.delete({
+      where: {
+        id: existingToken.id,
+      },
+    });
+
+    throw new AppError(MESSAGES.UNAUTHORIZED, HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  // Token Rotation - Hủy ngay token cũ để chống Replay Attack
+  await prisma.refreshToken.delete({
+    where: { id: existingToken.id },
+  });
+
+  // existingToken.user tự động thừa hưởng type Role nhờ Prisma Relation
+  return buildAuthResponse(existingToken.user);
+};
+
+export const logout = async (refreshToken: string) => {
+  const hashedToken = jwtUtil.hashToken(refreshToken);
+
+  await prisma.refreshToken.deleteMany({
+    where: {
+      token: hashedToken,
     },
-  };
+  });
+
+  return null;
 };
 
 export const getMe = async (userId: string) => {

@@ -4,22 +4,14 @@ import { createClassSchema, updateClassSchema } from "./classes.dto";
 
 export const classesValidation = {
   createClass: (req: Request, _res: Response, next: NextFunction) => {
-    try {
-      req.body = createClassSchema.parse(req.body);
+    req.body = createClassSchema.parse(req.body);
 
-      next();
-    } catch (error) {
-      next(error);
-    }
+    next();
   },
 
   updateClass: (req: Request, _res: Response, next: NextFunction) => {
-    try {
-      req.body = updateClassSchema.parse(req.body);
+    req.body = updateClassSchema.parse(req.body);
 
-      next();
-    } catch (error) {
-      next(error);
-    }
+    next();
   },
 };

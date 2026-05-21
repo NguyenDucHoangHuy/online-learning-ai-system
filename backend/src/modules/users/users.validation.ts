@@ -1,15 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 
-import { updateProfileSchema } from "./users.dto";
+import { updateProfileSchema, changePasswordSchema } from "./users.dto";
 
 export const usersValidation = {
   updateProfile: (req: Request, _res: Response, next: NextFunction) => {
-    try {
-      req.body = updateProfileSchema.parse(req.body);
+    req.body = updateProfileSchema.parse(req.body);
+    next();
+  },
 
-      next();
-    } catch (error) {
-      next(error);
-    }
+  changePassword: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = changePasswordSchema.parse(req.body);
+    next();
   },
 };

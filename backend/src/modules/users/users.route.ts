@@ -10,10 +10,18 @@ const router = Router();
 
 router.use(authenticate);
 
+router.get("/me", usersController.getMe);
+
 router.patch(
-  "/profile",
+  "/me",
   usersValidation.updateProfile,
   usersController.updateProfile,
+);
+
+router.patch(
+  "/me/password",
+  usersValidation.changePassword,
+  usersController.changePassword,
 );
 
 export default router;
