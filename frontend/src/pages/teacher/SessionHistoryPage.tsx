@@ -1,5 +1,4 @@
 // src/pages/teacher/SessionHistoryPage.tsx
-import React from "react";
 import { useNavigate } from "react-router-dom";
 import { BarChart2, Calendar, Clock, Hash, Eye, Play } from "lucide-react";
 import { ROUTES } from "../../constants";

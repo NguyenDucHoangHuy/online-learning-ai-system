@@ -1,37 +1,27 @@
+import { ROUTES as FLAT_ROUTES, getDynamicRoute } from "./routes.constants";
+
 export const ROUTES = {
-  HOME: "/",
-  LOGIN: "/login",
-  REGISTER: "/register",
+  ...FLAT_ROUTES,
   STUDENT: {
-    JOIN: "/student",
-    ROOM: "/student/room/:sessionId",
-    HISTORY: "/student/my-learning",
+    JOIN: FLAT_ROUTES.STUDENT_JOIN,
+    HISTORY: "/student/history",
+    ROOM: FLAT_ROUTES.STUDY_ROOM,
+    WAITING: "/student/waiting",
   },
   TEACHER: {
-    DASHBOARD: "/teacher/dashboard",
-    CLASSES: "/teacher/manage-classes", // Khai báo chuẩn ở đây
+    DASHBOARD: FLAT_ROUTES.TEACHER_DASHBOARD,
+    CLASSES: FLAT_ROUTES.TEACHER_CLASSES,
+    CLASS_DETAIL: FLAT_ROUTES.TEACHER_CLASS_DETAIL,
     CREATE_SESSION: "/teacher/create-session",
-    SESSION: "/teacher/session/:sessionId",
-    HISTORY: "/teacher/session-history",
-    REPORT: "/teacher/session-report",
+    SESSION: FLAT_ROUTES.TEACHER_SESSION,
+    HISTORY: "/teacher/history",
+    REPORT: "/teacher/report",
   },
 } as const;
 
-export const ROLES = {
-  STUDENT: "student",
-  TEACHER: "teacher",
-} as const;
-
-export const EMOTION_LABEL: Record<string, string> = {
-  happy: "Vui vẻ",
-  neutral: "Bình thường",
-  sad: "Buồn",
-  tired: "Mệt mỏi",
-  sleepy: "Buồn ngủ",
-  angry: "Tức giận",
-};
-
-export const ATTENTION_THRESHOLD = {
-  HIGH: 70,
-  MEDIUM: 50,
-} as const;
+export { getDynamicRoute };
+export * from "./events.constants";
+export * from "./query-keys.constants";
+export * from "./roles.constants";
+export * from "./storage.constants";
+export * from "./session.constants";

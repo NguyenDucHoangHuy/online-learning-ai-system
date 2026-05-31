@@ -58,6 +58,20 @@ const buildAuthResponse = async (user: {
 };
 
 export const register = async (payload: RegisterDto) => {
+  // 1. CHỐT CHẶN BẢO MẬT: Kiểm tra mã xác thực nếu đăng ký phân quyền TEACHER
+  if (payload.role === Role.TEACHER) {
+    if (
+      !payload.teacherCode ||
+      payload.teacherCode !== env.TEACHER_VERIFICATION_CODE
+    ) {
+      throw new AppError(
+        "Mã xác thực giảng viên không chính xác hoặc đã hết hạn. Vui lòng liên hệ Admin.",
+        HTTP_STATUS.BAD_REQUEST,
+      );
+    }
+  }
+
+  // 2. Logic kiểm tra trùng lặp Email cũ của bồ giữ nguyên vẹn
   const existingUser = await prisma.user.findUnique({
     where: {
       email: payload.email,
@@ -70,12 +84,13 @@ export const register = async (payload: RegisterDto) => {
 
   const hashedPassword = await bcrypt.hash(payload.password, 10);
 
+  // 3. Khởi tạo tài khoản sạch vào Database
   const user = await prisma.user.create({
     data: {
       fullName: payload.fullName,
       email: payload.email,
       passwordHash: hashedPassword,
-      role: payload.role, // Zod đã đảm bảo payload.role khớp với chuẩn Role Enum
+      role: payload.role,
     },
   });
 

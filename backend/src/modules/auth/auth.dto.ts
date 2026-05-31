@@ -9,6 +9,8 @@ export const registerSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 
   role: z.enum([Role.STUDENT, Role.TEACHER]),
+
+  teacherCode: z.string().optional(),
 });
 
 export const loginSchema = z.object({
