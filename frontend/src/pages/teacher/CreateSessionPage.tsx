@@ -10,6 +10,8 @@ import {
   BookOpen,
   Loader2,
   ShieldAlert,
+  Calendar, // Nạp thêm icon lịch trình
+  Clock, // Nạp thêm icon đồng hồ đo giờ
 } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -29,19 +31,24 @@ const CreateSessionPage = () => {
   const classesList = classesResponse?.data || [];
 
   // --- 🎯 STATES & OPTIMIZATIONS ---
-  // FIX 4: Khởi tạo trực tiếp từ URL, triệt tiêu hoàn toàn useEffect thừa
   const [selectedClassId, setSelectedClassId] = useState(urlClassId);
   const [sessionTitle, setSessionTitle] = useState("");
   const [approvalRequired, setApprovalRequired] = useState(false);
+
+  // ⏳ BỘ ĐÔI STATE QUẢN LÝ KHUNG GIỜ LÊN LỚP ĐỒNG BỘ
+  const [startedAt, setStartedAt] = useState("");
+  const [endedAt, setEndedAt] = useState("");
+
   const [error, setError] = useState("");
 
-  // FIX 3: Derived State — Tự động dò tìm thông tin lớp học chuẩn từ State của TanStack Query
+  // Derived State — Tự động dò tìm thông tin lớp học từ Cache TanStack Query
   const selectedClass = classesList.find((c) => c.id === selectedClassId);
 
   const handleLaunch = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
+    // --- 🛑 TẦNG KIỂM DUYỆT FORM DỮ LIỆU ---
     if (!selectedClassId) {
       setError("Vui lòng chọn một môn học/lớp học để mở phiên dạy trực tuyến.");
       return;
@@ -50,26 +57,82 @@ const CreateSessionPage = () => {
       setError("Vui lòng đặt tên/tiêu đề cho buổi học này.");
       return;
     }
+    if (!startedAt) {
+      setError("Vui lòng cấu hình thời gian bắt đầu buổi học.");
+      return;
+    }
+    if (!endedAt) {
+      setError("Vui lòng cấu hình thời gian kết thúc buổi học.");
+      return;
+    }
 
-    // 📡 KÍCH NỔ API
+    // --- 🧮 TOÁN HỌC KIỂM TRÊN KHUNG GIỜ (CHẶN TRẦN < 3 TIẾNG) ---
+    const startTime = new Date(startedAt).getTime();
+    const endTime = new Date(endedAt).getTime();
+    const durationMs = endTime - startTime;
+
+    // Hằng số chặn trần 3 tiếng: 3 giờ * 60 phút * 60 giây * 1000 ms = 10,800,000 ms
+    const MAX_DURATION_MS = 3 * 60 * 60 * 1000;
+
+    if (durationMs <= 0) {
+      setError(
+        "Thời gian kết thúc bài học bắt buộc phải lớn hơn thời gian bắt đầu.",
+      );
+      return;
+    }
+
+    if (durationMs > MAX_DURATION_MS) {
+      setError(
+        "Quán triệt: Thời lượng một buổi học chỉ được phép diễn ra dưới 3 tiếng (tối đa 180 phút).",
+      );
+      return;
+    }
+
+    // 📡 KÍCH NỔ API LÊN SERVER KÈM KHẾ ƯỚC THỜI GIAN LỊCH TRÌNH ISO-STRING
     createSession(
       {
-        // 🎯 FIX TẠI ĐÂY: Trỏ đúng tên biến State của bồ vào Key khế ước dữ liệu
         classId: selectedClassId,
         payload: {
           title: sessionTitle.trim(),
           requireApproval: approvalRequired,
+          startedAt: new Date(startedAt).toISOString(), // Chuẩn hóa ISO gửi xuống DB
+          endedAt: new Date(endedAt).toISOString(), // Chuẩn hóa ISO gửi xuống DB
         },
       },
       {
         onSuccess: (response) => {
-          const liveSessionId = response.data.id;
+          const liveSession = response.data;
+          const liveSessionId = liveSession.id;
+
+          // Nếu phiên bắt đầu trong tương lai (WAITING), không chuyển thẳng vào phòng dạy.
+          const respStartedAt = liveSession.startedAt
+            ? new Date(liveSession.startedAt).getTime()
+            : null;
+          const now = Date.now();
+
+          if (respStartedAt && respStartedAt > now) {
+            // Thông báo cho Giáo viên rằng phiên đã được lập lịch và chuyển về Dashboard
+            alert(
+              `Phiên học đã được lên lịch bắt đầu vào ${new Date(
+                respStartedAt,
+              ).toLocaleString()}. Bạn có thể vào phòng khi đến giờ hoặc bắt đầu thủ công từ danh sách.`,
+            );
+            navigate(ROUTES.TEACHER.DASHBOARD);
+            return;
+          }
+
+          // Nếu bắt đầu ngay (hoặc backend lazy-activated), chuyển vào TeachingRoom
           navigate(ROUTES.TEACHER.SESSION.replace(":sessionId", liveSessionId));
         },
         onError: (err: unknown) => {
-          setError(
-            err instanceof Error ? err.message : "Tạo phòng học thất bại.",
-          );
+          // Ép kiểu an toàn (Type Assertion) cấu trúc phản hồi báo lỗi đặc thù của Axios
+          const apiError = err as {
+            response?: { data?: { message?: string } };
+          };
+          const fallbackMessage =
+            err instanceof Error ? err.message : "Tạo phòng học thất bại.";
+
+          setError(apiError.response?.data?.message || fallbackMessage);
         },
       },
     );
@@ -106,7 +169,7 @@ const CreateSessionPage = () => {
       </div>
 
       {error && (
-        <div className="mb-8 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-600 flex items-center gap-3">
+        <div className="mb-8 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-600 flex items-center gap-3 animate-in fade-in duration-300">
           <ShieldAlert size={18} className="flex-shrink-0" />
           {error}
         </div>
@@ -117,9 +180,8 @@ const CreateSessionPage = () => {
         onSubmit={handleLaunch}
         className="grid grid-cols-1 xl:grid-cols-3 gap-10"
       >
-        {/* LEFT FORM */}
+        {/* LEFT FORM CONTAINER */}
         <div className="xl:col-span-2 space-y-8 bg-white p-8 md:p-10 rounded-[3rem] shadow-sm border border-slate-200">
-          {/* Tận dụng FIX 3: Hiển thị hộp tóm tắt môn học cực kỳ chuyên nghiệp nếu đã chọn lớp */}
           {selectedClass && (
             <div className="bg-blue-50/40 border border-blue-100/70 p-5 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-200">
@@ -136,8 +198,8 @@ const CreateSessionPage = () => {
             </div>
           )}
 
+          {/* BLOCK HÀNG 1: CHỌN MÔN HỌC VÀ NHẬP TIÊU ĐỀ */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* 1. CHỌN MÔN HỌC */}
             <div className="space-y-3">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">
                 Select Discipline
@@ -195,7 +257,6 @@ const CreateSessionPage = () => {
               </div>
             </div>
 
-            {/* 2. NHẬP TIÊU ĐỀ */}
             <div className="space-y-3">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">
                 Session Title
@@ -210,6 +271,38 @@ const CreateSessionPage = () => {
             </div>
           </div>
 
+          {/* ⏳ BLOCK HÀNG 2 MỚI CẤY: THỜI GIAN BẮT ĐẦU VÀ KẾT THÚC CỦA BUỔI HỌC */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                <Calendar size={13} className="text-slate-400" /> Start Time
+                (Started At)
+              </label>
+              <input
+                type="datetime-local"
+                disabled={isLaunching}
+                value={startedAt}
+                onChange={(e) => setStartedAt(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-800 transition-all cursor-pointer disabled:opacity-50"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                <Clock size={13} className="text-slate-400" /> End Time (Ended
+                At)
+              </label>
+              <input
+                type="datetime-local"
+                disabled={isLaunching}
+                value={endedAt}
+                onChange={(e) => setEndedAt(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-800 transition-all cursor-pointer disabled:opacity-50"
+              />
+            </div>
+          </div>
+
+          {/* BLOCK HÀNG 3: MÃ PHÒNG VÀ GỢI Ý HỆ THỐNG */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest ml-1">
@@ -223,8 +316,9 @@ const CreateSessionPage = () => {
             </div>
 
             <div className="flex items-center bg-blue-50/30 border border-dashed border-blue-200/60 rounded-2xl px-6 py-4 text-xs font-medium text-blue-700 leading-relaxed">
-              💡 Hệ thống sẽ tự động mã hóa đường truyền WebRTC và chuẩn bị sẵn
-              mô hình AI phân tích cảm xúc ngay khi bồ kích hoạt mở lớp.
+              💡 Theo quán triệt quy chuẩn hệ thống, thời lượng mỗi buổi học
+              trực tuyến bắt buộc phải thiết lập nhỏ hơn 3 tiếng để tối ưu dung
+              lượng phân tích sóng âm AI.
             </div>
           </div>
 
@@ -288,7 +382,7 @@ const CreateSessionPage = () => {
           </div>
         </div>
 
-        {/* RIGHT PANEL */}
+        {/* RIGHT PANEL CONTAINER */}
         <div className="space-y-6 flex flex-col">
           <div className="bg-slate-900 p-10 rounded-[3rem] text-white relative overflow-hidden shadow-xl flex-1 flex flex-col justify-center">
             <div className="absolute -right-10 -top-10 text-slate-800 opacity-50">
@@ -312,7 +406,13 @@ const CreateSessionPage = () => {
 
           <Button
             type="submit"
-            disabled={isLaunching || !sessionTitle || !selectedClassId}
+            disabled={
+              isLaunching ||
+              !sessionTitle ||
+              !selectedClassId ||
+              !startedAt ||
+              !endedAt
+            }
             className="w-full py-8 bg-slate-900 hover:bg-slate-800 text-white rounded-[2rem] text-xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             {isLaunching ? (

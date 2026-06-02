@@ -6,12 +6,13 @@ export const ROUTES = {
 
   // Phân hệ dành cho Học sinh (Student)
   STUDENT_JOIN: "/join",
+  STUDENT_WAITING: "/student/waiting", // 🎯 BỔ SUNG: Khai báo cổng tĩnh cho sảnh chờ
   STUDY_ROOM: "/study-room/:sessionId",
 
   // Phân hệ dành cho Giáo viên (Teacher)
   TEACHER_DASHBOARD: "/teacher/dashboard",
   TEACHER_CLASSES: "/teacher/classes",
-  TEACHER_CLASS_DETAIL: "/teacher/classes/:classId", // <-- Bổ sung: Xem chi tiết lớp để tạo Session
+  TEACHER_CLASS_DETAIL: "/teacher/classes/:classId",
   TEACHER_SESSION: "/teacher/session/:sessionId",
 
   // Phân hệ bẫy lỗi hệ thống

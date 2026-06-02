@@ -47,8 +47,11 @@ export const sessionsService = {
   /**
    * Teacher kết thúc buổi học (Đổi status sang ENDED)
    */
-  endSession: async (sessionId: string): Promise<SessionResponse> => {
-    return api.patch(`/sessions/${sessionId}/end`);
+  endSession: async (
+    sessionId: string,
+    payload?: Record<string, unknown>,
+  ): Promise<SessionResponse> => {
+    return api.patch(`/sessions/${sessionId}/end`, payload);
   },
 
   /**

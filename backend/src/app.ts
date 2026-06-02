@@ -24,8 +24,10 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: env.CLIENT_URL || "http://localhost:5173", // URL của Vite/React frontend
-    credentials: true,
+    origin: true, // Kích hoạt phản chiếu động để chấp thuận cả IP mạng LAN 192.168.1.12
+    credentials: true, // Giữ lại để truyền nhận token/cookie an toàn
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 

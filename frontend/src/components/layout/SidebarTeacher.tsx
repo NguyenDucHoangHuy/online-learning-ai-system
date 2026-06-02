@@ -10,6 +10,8 @@ import {
   LogOut,
 } from "lucide-react";
 import { ROUTES } from "../../constants";
+// 🎯 BỔ SUNG: Nạp kho trạng thái xác thực toàn cục
+import { useAuthStore } from "../../stores/auth.store";
 
 interface SidebarProps {
   onSignOut?: () => void;
@@ -19,16 +21,16 @@ const SidebarTeacher: React.FC<SidebarProps> = ({ onSignOut }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // 🎯 BỔ SUNG: Bốc thông tin Giảng viên đang đăng nhập thực tế
+  const user = useAuthStore((s) => s.user);
+
   const currentPath = location.pathname;
 
   // ===== ACTIVE LOGIC =====
-  const isDashboard = currentPath === ROUTES.TEACHER.DASHBOARD;
-  const isClasses = currentPath === ROUTES.TEACHER.CLASSES;
+  const isDashboard = currentPath === ROUTES.TEACHER_DASHBOARD;
+  const isClasses = currentPath === ROUTES.TEACHER_CLASSES;
   const isCreateSession = currentPath === ROUTES.TEACHER.CREATE_SESSION;
   const isHistory = currentPath === ROUTES.TEACHER.HISTORY;
-
-  // ⚠️ SESSION có param
-  // const isSession = currentPath.startsWith("/teacher/session");
 
   return (
     <aside className="w-[270px] h-screen bg-white border-r border-slate-200 flex flex-col justify-between p-6 md:p-8 fixed top-0 left-0 z-50">
@@ -43,7 +45,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({ onSignOut }) => {
             <span className="font-extrabold text-[15px] text-slate-900">
               EduSense
             </span>
-            <span className="text-[10px] text-slate-500 tracking-[0.15em] font-bold">
+            <span className="text-[10px] text-slate-400 tracking-[0.15em] font-bold">
               PLATFORM
             </span>
           </div>
@@ -53,7 +55,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({ onSignOut }) => {
         <nav className="flex flex-col gap-2">
           {/* DASHBOARD */}
           <button
-            onClick={() => navigate(ROUTES.TEACHER.DASHBOARD)}
+            onClick={() => navigate(ROUTES.TEACHER_DASHBOARD)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               isDashboard
                 ? "bg-slate-100 text-slate-900"
@@ -69,7 +71,7 @@ const SidebarTeacher: React.FC<SidebarProps> = ({ onSignOut }) => {
 
           {/* MANAGE CLASSES */}
           <button
-            onClick={() => navigate(ROUTES.TEACHER.CLASSES)}
+            onClick={() => navigate(ROUTES.TEACHER_CLASSES)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               isClasses
                 ? "bg-slate-100 text-slate-900"
@@ -119,16 +121,17 @@ const SidebarTeacher: React.FC<SidebarProps> = ({ onSignOut }) => {
 
       {/* BOTTOM */}
       <div className="border-t border-slate-100 pt-6">
-        {/* USER */}
+        {/* USER INFO BOX */}
         <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0">
             <User size={16} />
           </div>
           <div className="flex flex-col overflow-hidden">
-            <span className="text-xs font-bold text-slate-700 truncate">
-              HOÀNG HUY
+            {/* 🎯 ĐÃ PHẲNG HÓA: Hiện chuẩn xác tên Giảng viên thực tế từ Auth Store */}
+            <span className="text-xs font-black text-slate-800 truncate uppercase tracking-wide">
+              {user?.fullName || "Giảng viên"}
             </span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mt-0.5">
               Giảng viên
             </span>
           </div>

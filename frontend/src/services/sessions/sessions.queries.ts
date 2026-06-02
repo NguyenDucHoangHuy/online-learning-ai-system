@@ -11,20 +11,31 @@ export const SESSION_KEYS = {
 };
 
 /**
- * Lấy chi tiết phòng học để nạp dữ liệu realtime
+ * 🎯 ĐÃ NÂNG CẤP TYPE-SAFE: Lấy chi tiết phòng học và bóc tách cấu trúc thông minh
  */
 export const useSessionDetail = (
   sessionId: string,
-  options?: { refetchInterval?: number | false }, // 🎯 Bổ sung thêm nhận diện cấu hình ngầm
+  options?: { refetchInterval?: number | false },
 ) => {
   return useQuery({
     queryKey: SESSION_KEYS.detail(sessionId),
-    queryFn: () => sessionsService.getSessionById(sessionId),
+    queryFn: async () => {
+      const res = await sessionsService.getSessionById(sessionId);
+
+      // 🚀 GIẢI PHÁP TRUNG CHUYỂN QUA UNKNOWN CHỐT HẠ:
+      // Ép biểu thức sang 'unknown' trước khi ép sang Record để xóa sạch lỗi biên dịch
+      if (res && typeof res === "object") {
+        const rawObj = res as unknown as Record<string, unknown>;
+        if ("data" in rawObj && rawObj.data) {
+          return rawObj.data;
+        }
+      }
+      return res;
+    },
     enabled: !!sessionId,
-    ...options, // Trải phẳng options cấu hình (như refetchInterval) vào đây
+    ...options,
   });
 };
-
 /**
  * Giáo viên tạo buổi học trực tuyến mới
  */
@@ -32,7 +43,6 @@ export const useCreateSession = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    // 🎯 FIX: Gom classId và payload vào chung 1 object làm tham số duy nhất cho mutationFn
     mutationFn: ({
       classId,
       payload,
@@ -50,14 +60,24 @@ export const useCreateSession = () => {
 };
 
 /**
- * 🎯 ĐỒNG BỘ BE: Đổi từ useJoinSession cũ sang useLookupSession ăn theo hàm GET mới
+ * Student check phòng và xin gia nhập bằng sessionCode
  */
 export const useLookupSession = () => {
   return useMutation({
-    mutationFn: sessionsService.lookupSession,
+    mutationFn: async (sessionCode: string) => {
+      const res = await sessionsService.lookupSession(sessionCode);
+
+      // 🚀 GIẢI PHÁP TRUNG CHUYỂN QUA UNKNOWN CHỐT HẠ:
+      if (res && typeof res === "object") {
+        const rawObj = res as unknown as Record<string, unknown>;
+        if ("data" in rawObj && rawObj.data) {
+          return rawObj.data;
+        }
+      }
+      return res;
+    },
   });
 };
-
 /**
  * Giáo viên bấm nút mở luồng dạy trực tuyến công nghệ cao
  */
@@ -67,8 +87,9 @@ export const useStartSession = () => {
   return useMutation({
     mutationFn: sessionsService.startSession,
     onSuccess: (_, sessionId) => {
+      const sid = sessionId as string;
       queryClient.invalidateQueries({
-        queryKey: SESSION_KEYS.detail(sessionId),
+        queryKey: SESSION_KEYS.detail(sid),
       });
     },
   });
@@ -81,12 +102,23 @@ export const useEndSession = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: sessionsService.endSession,
-    onSuccess: (_, sessionId) => {
+    mutationFn: ({
+      sessionId,
+      payload,
+    }: {
+      sessionId: string;
+      payload?: Record<string, unknown>;
+    }) => sessionsService.endSession(sessionId, payload),
+    onSuccess: (_, variables) => {
+      const vars = variables as unknown;
+      const sid =
+        (vars as { sessionId?: string })?.sessionId ?? (vars as string);
       queryClient.invalidateQueries({ queryKey: SESSION_KEYS.all });
-      queryClient.invalidateQueries({
-        queryKey: SESSION_KEYS.detail(sessionId),
-      });
+      if (typeof sid === "string") {
+        queryClient.invalidateQueries({
+          queryKey: SESSION_KEYS.detail(sid),
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["teacher-classes"] });
     },
   });
@@ -105,15 +137,15 @@ export const useClassSessions = (classId: string) => {
 };
 
 /**
- * 🎯 BỔ SUNG: Hook tự động bốc lịch sử học tập thật của Sinh viên từ Database
+ * Hook tự động bốc lịch sử học tập thật của Sinh viên từ Database
  */
 export const useStudentHistory = (options?: {
   refetchInterval?: number | false;
 }) => {
   return useQuery({
     queryKey: SESSION_KEYS.studentHistory,
-    queryFn: sessionsService.getStudentHistory,
-    staleTime: 1000 * 60 * 3, // Cache mặc định 3 phút
-    ...options, // 🎯 CHỐT 7: Trải phẳng options để ghi đè cấu hình polling khi cần thiết
+    queryFn: () => sessionsService.getStudentHistory(),
+    staleTime: 1000 * 60 * 3,
+    ...options,
   });
 };

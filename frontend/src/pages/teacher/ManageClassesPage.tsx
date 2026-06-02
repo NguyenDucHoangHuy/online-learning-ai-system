@@ -1,5 +1,7 @@
+// src/pages/teacher/ManageClassesPage.tsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query"; // 🎯 BỔ SUNG: Nạp queryClient để dọn cache
 import {
   BookOpen,
   PlusCircle,
@@ -13,6 +15,7 @@ import {
   Hash,
   Loader2,
   Copy,
+  LogIn,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/Button";
@@ -22,10 +25,23 @@ import { SESSION_STATUS } from "../../constants/session.constants";
 import { formatDate, formatTime } from "../../utils/date";
 import { useClasses } from "../../services/classes/classes.queries";
 import { useClassSessions } from "../../services/sessions/sessions.queries";
+import { api } from "../../lib/axios"; // 🎯 BỔ SUNG: Nạp axios instance gọi API trực tiếp
 import { ClassItem } from "../../types/api";
+
+interface ClassSessionItem {
+  id: string;
+  classId: string;
+  title: string;
+  sessionCode: string;
+  status: "WAITING" | "ACTIVE" | "ENDED"; // Hoặc bồ truyền chuẩn Enum SESSION_STATUS nếu có định kiểu literal
+  createdAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+}
 
 const ManageClassesPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient(); // 🎯 KHOI TẠO ĐỂ LÀM SẠCH CACHE REST
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,23 +54,68 @@ const ManageClassesPage: React.FC = () => {
   const { data: sessionsResponse, isLoading: isSessionsLoading } =
     useClassSessions(selectedClass?.id || "");
 
-  // 🎯 FIX 5: Bóc tách chính xác mảng dữ liệu từ cấu trúc bọc của Backend
   const sessionsList = sessionsResponse?.data || [];
 
-  // 🔍 Bộ lọc tìm kiếm lớp học
   const filteredClasses = classesList.filter(
     (item) =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.code.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // 🎯 FIX 2: Thực hiện copy ngầm bất đồng bộ sạch sẽ, sẵn sàng tích hợp Toast thông báo sau này
   const handleCopyCode = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
     } catch (err) {
       console.error("Không thể sao chép mã phòng:", err);
     }
+  };
+
+  /**
+   * 🚀 ĐIỀU HƯỚNG VÀ KÍCH HOẠT PHÒNG DẠY THÔNG MINH (WORKFLOW GUARD)
+   * 🎯 ĐÃ CHỈNH SỬA: Chặn luồng WAITING, xin quyền mở phòng rồi mới cho vào trang dạy
+   */
+  const handleEnterLiveRoom = async (session: ClassSessionItem) => {
+    // Kịch bản A: Nếu buổi học vẫn đang nằm im ở trạng thái WAITING dưới DB
+    if (session.status === SESSION_STATUS.WAITING) {
+      const confirmOpen = window.confirm(
+        `Buổi học "${session.title}" chưa tới giờ bắt đầu theo lịch trình hệ thống.\n\nBạn có chắc chắn muốn kích hoạt mở lớp và phát sóng giảng dạy NGAY BÂY GIỜ không?`,
+      );
+
+      // Nếu Thầy cô bấm Hủy -> Chặn đứng, không cho chuyển vùng trang
+      if (!confirmOpen) return;
+
+      console.log(
+        "⚡ [Workflow Guard] Giáo viên xác nhận mở lớp sớm. Đang bắn API Start Session...",
+      );
+      try {
+        // Gọi lệnh PATCH /api/sessions/:sessionId/start lên Express Backend của bồ
+        await api.patch(`/sessions/${session.id}/start`);
+
+        // Làm sạch bộ nhớ đệm để sảnh ngoài tự động cập nhật chữ WAITING -> ACTIVE xanh mướt
+        await queryClient.invalidateQueries({
+          queryKey: ["session-participants-pending", session.id],
+        });
+
+        if (selectedClass?.id) {
+          await queryClient.invalidateQueries({
+            queryKey: ["sessions", selectedClass.id], // Key React Query bốc session theo lớp của bồ
+          });
+        }
+      } catch (err) {
+        console.error(
+          "🚨 [Start Session Error] Không thể nắn dòng trạng thái phòng sang ACTIVE:",
+          err,
+        );
+        alert(
+          "Gặp sự cố kết nối hệ thống. Không thể kích hoạt buổi học lúc này, vui lòng thử lại!",
+        );
+        return;
+      }
+    }
+
+    // Sau khi nắn trạng thái thành công hoặc phòng vốn dĩ đã ACTIVE -> Hộ tống vào thẳng phòng dạy
+    const targetPath = ROUTES.TEACHER.SESSION.replace(":sessionId", session.id);
+    navigate(targetPath);
   };
 
   return (
@@ -199,78 +260,109 @@ const ManageClassesPage: React.FC = () => {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {sessionsList.map((session) => (
-                  <div
-                    key={session.id}
-                    className="group flex flex-col xl:flex-row xl:items-center justify-between p-6 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-100 hover:border-blue-100 transition-colors gap-4"
-                  >
-                    <div className="flex items-center gap-5">
-                      <div
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-colors ${
-                          // 🎯 FIX 4: Thay thế chuỗi hardcode bằng Enum bảo vệ kiểu dữ liệu từ constants
-                          session.status === SESSION_STATUS.ACTIVE
-                            ? "bg-emerald-500 text-white animate-pulse"
-                            : session.status === SESSION_STATUS.WAITING
-                              ? "bg-blue-600 text-white"
-                              : "bg-slate-200 text-slate-400"
-                        }`}
-                      >
-                        <Video size={20} />
-                      </div>
+                {sessionsList.map((session: ClassSessionItem) => {
+                  const isLiveActive = session.status === SESSION_STATUS.ACTIVE;
+                  const isLiveWaiting =
+                    session.status === SESSION_STATUS.WAITING;
+                  const canEnter = isLiveActive || isLiveWaiting;
 
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-lg group-hover:text-blue-700 transition-colors">
-                          {session.title}
-                        </h4>
-                        <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
-                          <span className="flex items-center gap-1.5">
-                            {/* 🎯 FIX 3: Sử dụng trực tiếp hàm format từ utils sạch sẽ */}
-                            <Calendar size={14} />{" "}
-                            {formatDate(session.createdAt)}
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <Clock size={14} /> {formatTime(session.startedAt)}
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-widest ${
-                              session.status === SESSION_STATUS.ACTIVE
-                                ? "bg-emerald-100 text-emerald-700"
-                                : session.status === SESSION_STATUS.WAITING
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-slate-200 text-slate-600"
+                  return (
+                    <div
+                      key={session.id}
+                      // 🎯 ĐÃ SỬA: Chuyển hướng xử lý click mảng bọc qua hàm handleEnterLiveRoom bảo vệ workflow
+                      onClick={() => canEnter && handleEnterLiveRoom(session)}
+                      className={`group flex flex-col xl:flex-row xl:items-center justify-between p-6 rounded-2xl border transition-all duration-300 gap-4 ${
+                        canEnter
+                          ? "bg-white hover:bg-blue-50/40 border-slate-100 hover:border-blue-200 cursor-pointer hover:shadow-sm"
+                          : "bg-slate-50 border-slate-100 opacity-70"
+                      }`}
+                    >
+                      <div className="flex items-center gap-5 min-w-0 flex-1">
+                        <div
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm transition-colors ${
+                            isLiveActive
+                              ? "bg-emerald-500 text-white animate-pulse"
+                              : isLiveWaiting
+                                ? "bg-blue-600 text-white"
+                                : "bg-slate-200 text-slate-400"
+                          }`}
+                        >
+                          <Video size={20} />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h4
+                            className={`font-bold text-lg transition-colors truncate ${
+                              canEnter
+                                ? "text-slate-900 group-hover:text-blue-700"
+                                : "text-slate-500"
                             }`}
                           >
-                            {session.status}
-                          </span>
+                            {session.title}
+                          </h4>
+                          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-500 mt-1">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar size={14} />{" "}
+                              {formatDate(session.createdAt)}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <Clock size={14} />{" "}
+                              {formatTime(session.startedAt)}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${
+                                isLiveActive
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : isLiveWaiting
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {session.status}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-4 border-t xl:border-t-0 xl:border-l border-slate-200 pt-4 xl:pt-0 xl:pl-6">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                          Session Code
-                        </span>
-                        <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm group-hover:border-indigo-200 transition-colors">
-                          <Hash size={14} className="text-indigo-500" />
-                          <span className="font-mono font-bold text-indigo-700 tracking-widest">
-                            {session.sessionCode}
+                      <div className="flex items-center justify-between xl:justify-end gap-6 border-t xl:border-t-0 xl:border-l border-slate-200 pt-4 xl:pt-0 xl:pl-6 flex-shrink-0">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                            Session Code
                           </span>
+                          <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm group-hover:border-indigo-200 transition-colors">
+                            <Hash size={14} className="text-indigo-500" />
+                            <span className="font-mono font-bold text-indigo-700 tracking-widest">
+                              {session.sessionCode}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyCode(session.sessionCode);
+                              }}
+                              className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
+                              title="Copy Code"
+                            >
+                              <Copy size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {canEnter && (
                           <button
+                            // 🎯 ĐÃ SỬA: Chuyển hướng xử lý click nút qua hàm bảo vệ workflow đồng bộ
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleCopyCode(session.sessionCode);
+                              handleEnterLiveRoom(session);
                             }}
-                            className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
-                            title="Copy Code"
+                            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm"
                           >
-                            <Copy size={14} />
+                            <LogIn size={13} /> ENTER ROOM
                           </button>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -285,7 +377,6 @@ const ManageClassesPage: React.FC = () => {
   );
 };
 
-// --- COMPONENT CON THUẦN TÚY: ClassCard ---
 const ClassCard: React.FC<{
   item: ClassItem;
   onClick: () => void;

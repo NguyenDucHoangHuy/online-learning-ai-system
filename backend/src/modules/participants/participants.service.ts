@@ -4,6 +4,11 @@ import { prisma } from "../../prisma/client";
 import { HTTP_STATUS, MESSAGES } from "../../common/constants";
 import { AppError } from "../../common/middleware/error.middleware";
 
+// 🛰️ NẠP HẠ TẦNG ĐIỀU PHỐI SOCKET REAL-TIME THEO ĐÚNG ĐƯỜNG DẪN PROJECT
+import { getIO } from "../../sockets/socket.server";
+import { emitToStudent, emitToTeacher } from "../../sockets/utils/emit.util";
+import { SOCKET_EVENTS } from "../../sockets/socket.events";
+
 // ✅ Đã đổi tên cho rõ nghĩa (Teacher Ownership)
 const findParticipantByTeacher = async (
   participantId: string,
@@ -29,11 +34,19 @@ const findParticipantByTeacher = async (
 
 export const participantsService = {
   joinSession: async (sessionId: string, studentId: string) => {
+    // 🎯 TỐI ƯU: Include thêm thông tin class để bốc ra teacherId phục vụ bắn Socket sau đó
     const session = await prisma.classSession.findFirst({
       where: {
         id: sessionId,
         status: {
           in: [SessionStatus.WAITING, SessionStatus.ACTIVE],
+        },
+      },
+      include: {
+        class: {
+          select: {
+            teacherId: true,
+          },
         },
       },
     });
@@ -48,6 +61,8 @@ export const participantsService = {
         studentId,
       },
     });
+
+    let participantRecord;
 
     if (existingParticipant) {
       // ✅ Cải thiện UX/API: Ném lỗi Conflict nếu đã được duyệt
@@ -64,7 +79,7 @@ export const participantsService = {
       }
 
       // Logic Rejoin: Chỉ chạy nếu trước đó bị REJECTED hoặc đã LEFT
-      return prisma.sessionParticipant.update({
+      participantRecord = await prisma.sessionParticipant.update({
         where: {
           id: existingParticipant.id,
         },
@@ -78,19 +93,55 @@ export const participantsService = {
             increment: 1,
           },
         },
+        include: {
+          student: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      });
+    } else {
+      participantRecord = await prisma.sessionParticipant.create({
+        data: {
+          sessionId,
+          studentId,
+          joinStatus: session.requireApproval
+            ? JoinStatus.PENDING
+            : JoinStatus.APPROVED,
+          joinedAt: session.requireApproval ? null : new Date(),
+        },
+        include: {
+          student: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
       });
     }
 
-    return prisma.sessionParticipant.create({
-      data: {
-        sessionId,
-        studentId,
-        joinStatus: session.requireApproval
-          ? JoinStatus.PENDING
-          : JoinStatus.APPROVED,
-        joinedAt: session.requireApproval ? null : new Date(),
-      },
-    });
+    // 📡 MẮT XÍCH BƯỚC 3.5: Nếu trạng thái là PENDING, bắn ngay tin nhắn báo danh lên phòng riêng của Giáo viên
+    if (participantRecord.joinStatus === JoinStatus.PENDING) {
+      try {
+        const io = getIO();
+        emitToTeacher(
+          io,
+          session.class.teacherId,
+          SOCKET_EVENTS.PARTICIPANT_JOINED,
+          {
+            id: participantRecord.id,
+            sessionId: participantRecord.sessionId,
+            studentId: participantRecord.studentId,
+            joinStatus: participantRecord.joinStatus,
+            student: participantRecord.student,
+          },
+        );
+      } catch (socketErr) {
+        console.error(
+          "⚠️ [Socket Engine] Không thể notify sự kiện participant:joined cho giáo viên:",
+          socketErr,
+        );
+      }
+    }
+
+    return participantRecord;
   },
 
   getParticipants: async (
@@ -142,7 +193,7 @@ export const participantsService = {
       );
     }
 
-    return prisma.sessionParticipant.update({
+    const updatedParticipant = await prisma.sessionParticipant.update({
       where: {
         id: participantId,
       },
@@ -151,6 +202,26 @@ export const participantsService = {
         joinedAt: new Date(),
       },
     });
+
+    // 📡 MẮT XÍCH BƯỚC 3.3: Gõ cửa phòng riêng sinh viên báo tin vui APPROVED để kích hoạt chuyển trang realtime
+    try {
+      const io = getIO();
+      emitToStudent(
+        io,
+        updatedParticipant.studentId,
+        SOCKET_EVENTS.PARTICIPANT_APPROVED,
+        {
+          sessionId: updatedParticipant.sessionId,
+        },
+      );
+    } catch (socketErr) {
+      console.error(
+        "⚠️ [Socket Engine] Gặp lỗi khi emit sự kiện approved sang sinh viên:",
+        socketErr,
+      );
+    }
+
+    return updatedParticipant;
   },
 
   rejectParticipant: async (participantId: string, teacherId: string) => {
@@ -167,7 +238,7 @@ export const participantsService = {
       );
     }
 
-    return prisma.sessionParticipant.update({
+    const updatedParticipant = await prisma.sessionParticipant.update({
       where: {
         id: participantId,
       },
@@ -175,6 +246,26 @@ export const participantsService = {
         joinStatus: JoinStatus.REJECTED,
       },
     });
+
+    // 📡 MẮT XÍCH BƯỚC 3.3: Bắn tin REJECTED trực tiếp cho Sinh viên để ép văng khỏi radar phòng chờ
+    try {
+      const io = getIO();
+      emitToStudent(
+        io,
+        updatedParticipant.studentId,
+        SOCKET_EVENTS.PARTICIPANT_REJECTED,
+        {
+          sessionId: updatedParticipant.sessionId,
+        },
+      );
+    } catch (socketErr) {
+      console.error(
+        "⚠️ [Socket Engine] Gặp lỗi khi emit sự kiện rejected sang sinh viên:",
+        socketErr,
+      );
+    }
+
+    return updatedParticipant;
   },
 
   leaveSession: async (participantId: string, studentId: string) => {
@@ -183,21 +274,36 @@ export const participantsService = {
         id: participantId,
         studentId,
       },
+      include: {
+        session: {
+          include: {
+            class: { select: { teacherId: true } },
+          },
+        },
+      },
     });
 
     if (!participant) {
       throw new AppError(MESSAGES.PARTICIPANT_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
     }
 
-    // ✅ Guard State: Phải đang ở trong phòng (APPROVED) mới được leave
-    if (participant.joinStatus !== JoinStatus.APPROVED) {
+    // =======================================================================
+    // 🎯 ĐÃ VÁ GUARD STATE: Chấp nhận cả APPROVED (Rời phòng) và PENDING (Hủy sảnh chờ)
+    // =======================================================================
+    const allowedStatuses: JoinStatus[] = [
+      JoinStatus.APPROVED,
+      JoinStatus.PENDING,
+    ];
+
+    if (!allowedStatuses.includes(participant.joinStatus)) {
       throw new AppError(
-        "Can only leave a session you have already joined",
+        "Chỉ có thể rời phòng hoặc hủy yêu cầu khi đang ở trạng thái APPROVED hoặc PENDING.",
         HTTP_STATUS.BAD_REQUEST,
       );
     }
 
-    return prisma.sessionParticipant.update({
+    // Thực hiện lệnh ghi đè cập nhật mốc thời gian rời đi dứt khoát dưới Database
+    const updatedParticipant = await prisma.sessionParticipant.update({
       where: {
         id: participantId,
       },
@@ -206,6 +312,28 @@ export const participantsService = {
         leftAt: new Date(),
       },
     });
+
+    // 📡 MẮT XÍCH BỔ TRỢ: Báo tin cho Giáo viên biết Sinh viên đã rút lui khỏi lớp/hàng chờ
+    try {
+      const io = getIO();
+      emitToTeacher(
+        io,
+        participant.session.class.teacherId,
+        SOCKET_EVENTS.PARTICIPANT_LEFT,
+        {
+          userId: studentId,
+          role: "STUDENT",
+          leftAt: updatedParticipant.leftAt?.toISOString(),
+        },
+      );
+    } catch (socketErr) {
+      console.error(
+        "⚠️ [Socket Engine] Gặp lỗi khi emit sự kiện left sang giáo viên:",
+        socketErr,
+      );
+    }
+
+    return updatedParticipant;
   },
 
   approveAllParticipants: async (sessionId: string, teacherId: string) => {
@@ -223,7 +351,18 @@ export const participantsService = {
       throw new AppError(MESSAGES.FORBIDDEN, HTTP_STATUS.FORBIDDEN);
     }
 
-    // 2. Chạy lệnh update hàng loạt (Bulk Update) những sinh viên đang PENDING
+    // 🎯 THU THẬP DANH SÁCH: Quét lấy mảng studentId đang xếp hàng PENDING trước khi dội bom update hàng loạt
+    const pendingStudents = await prisma.sessionParticipant.findMany({
+      where: {
+        sessionId,
+        joinStatus: JoinStatus.PENDING,
+      },
+      select: {
+        studentId: true,
+      },
+    });
+
+    // 2. Chạy lệnh update hàng loạt (Bulk Update) những sinh viên đang PENDING dưới DB
     const updateResult = await prisma.sessionParticipant.updateMany({
       where: {
         sessionId,
@@ -234,6 +373,28 @@ export const participantsService = {
         joinedAt: new Date(), // Đóng dấu thời gian tham gia đồng loạt
       },
     });
+
+    // 📡 MẮT XÍCH BƯỚC 3.3: Quét qua danh sách mảng Sinh viên vừa lấy để dội bom lệnh APPROVED đồng loạt thời gian thực
+    if (pendingStudents.length > 0) {
+      try {
+        const io = getIO();
+        pendingStudents.forEach((record) => {
+          emitToStudent(
+            io,
+            record.studentId,
+            SOCKET_EVENTS.PARTICIPANT_APPROVED,
+            {
+              sessionId,
+            },
+          );
+        });
+      } catch (socketErr) {
+        console.error(
+          "⚠️ [Socket Engine] Lỗi dội bom lệnh approve-all thời gian thực:",
+          socketErr,
+        );
+      }
+    }
 
     return updateResult; // Trả về số lượng bản ghi đã được cập nhật { count: X }
   },

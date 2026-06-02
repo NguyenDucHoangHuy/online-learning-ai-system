@@ -58,3 +58,13 @@ export const deleteClass = asyncHandler(async (req: Request, res: Response) => {
 
   return sendResponse(res, HTTP_STATUS.OK, MESSAGES.CLASS_DELETED);
 });
+
+export const getDashboardStats = asyncHandler(
+  async (req: Request, res: Response) => {
+    const teacherId = req.user!.id; // Bốc ID chuẩn xác của Giáo viên đang đăng nhập hệ thống
+
+    const result = await classesService.getDashboardStats(teacherId);
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  },
+);

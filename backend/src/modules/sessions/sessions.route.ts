@@ -26,6 +26,19 @@ router.get(
 );
 
 // ==================== 2. TEACHER ONLY ROUTES ====================
+
+// 🎯 BỔ SUNG ĐẦU TIÊN CHỐT HẠ: API bốc lịch sử các buổi học gần đây nhất của riêng Giáo viên
+router.get(
+  "/sessions/history",
+  authorize([Role.TEACHER]),
+  sessionsController.getSessionHistory, // Tên hàm xử lý trong controller
+);
+router.get(
+  "/sessions/recent",
+  authorize([Role.TEACHER]),
+  sessionsController.getRecentSessions,
+);
+
 // /api/classes/:classId/sessions
 router.post(
   "/classes/:classId/sessions",

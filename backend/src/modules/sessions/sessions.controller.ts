@@ -64,9 +64,13 @@ export const sessionsController = {
   endSession: asyncHandler(async (req: Request, res: Response) => {
     const teacherId = req.user!.id;
 
+    // Allow caller to specify who ended the session (TEACHER | SYSTEM)
+    const endedBy = req.body?.endedBy as "TEACHER" | "SYSTEM" | undefined;
+
     const result = await sessionsService.endSession(
       req.params.sessionId,
       teacherId,
+      endedBy,
     );
 
     return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SESSION_ENDED, result);
@@ -83,6 +87,22 @@ export const sessionsController = {
 
     const result = await sessionsService.getMyHistory(studentId);
 
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
+  getRecentSessions: asyncHandler(async (req: Request, res: Response) => {
+    const teacherId = req.user!.id; // Bốc chuẩn xác ID của Giảng viên từ token đăng nhập
+
+    const result = await sessionsService.getRecentSessions(teacherId);
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+  getSessionHistory: asyncHandler(async (req: Request, res: Response) => {
+    const teacherId = req.user!.id; // Bốc ID chuẩn xác từ token đăng nhập
+
+    const result = await sessionsService.getSessionHistory(teacherId);
+
+    // Trả trực tiếp mảng dữ liệu về để Frontend tự động bóc tách thông minh
     return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
   }),
 };

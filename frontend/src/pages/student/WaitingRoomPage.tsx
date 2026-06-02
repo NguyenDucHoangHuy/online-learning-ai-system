@@ -1,6 +1,7 @@
 // src/pages/student/WaitingRoomPage.tsx
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query"; // 🎯 BỔ SUNG
 import {
   Clock,
   ArrowLeft,
@@ -10,71 +11,178 @@ import {
   Coffee,
 } from "lucide-react";
 import { ROUTES } from "../../constants";
+import { SOCKET_EVENTS } from "../../constants/events.constants";
 import {
   useSessionDetail,
   useStudentHistory,
 } from "../../services/sessions/sessions.queries";
+import { useSocket } from "../../socket/socket.client";
+import { api } from "../../lib/axios";
+
+interface ExpectedSessionData {
+  id: string;
+  title: string;
+  sessionCode: string;
+  status: string;
+  class: { id: string; name: string };
+}
 
 export default function WaitingRoomPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient(); // 🎯 BỔ SUNG
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("sessionId") || "";
 
-  // 🎯 CHỐT 9: Gọi tĩnh KHÔNG polling, chỉ lấy metadata (Tên môn, tiêu đề) để hiển thị giao diện trực quan
-  const { data: sessionResponse, isLoading: isDetailsLoading } =
-    useSessionDetail(sessionId);
-  const sessionData = sessionResponse?.data;
-
-  // 📡 CHỐT 7: Nguồn dữ liệu đúng nghiệp vụ duy nhất — Polling lịch sử tham gia để săn tìm biến động duyệt phòng
-  const { data: historyResponse } = useStudentHistory({
-    refetchInterval: 3000, // Cứ mỗi 3 giây gọi API quét ngầm một lần
-  });
-  const historyList = historyResponse?.data || [];
-
-  // 🎯 CHỐT 8: Rào chắn ngăn chặn tình trạng spam điều hướng liên tục khi component chưa kịp unmount
+  const { socket, isConnected } = useSocket();
   const hasNavigated = useRef(false);
 
-  // 🔄 LOOP NGHIỆP VỤ CHUẨN: Đồng bộ 100% logic phê duyệt cá nhân
+  const { data: sessionResponse, isLoading: isDetailsLoading } =
+    useSessionDetail(sessionId);
+  const sessionData = sessionResponse
+    ? (sessionResponse as unknown as ExpectedSessionData)
+    : null;
+
+  // 📡 REST 2: Cài polling 3 giây làm mới lịch sử để bọc lót tuyệt đối nếu socket nghẽn
+  const { data: historyResponse, isLoading: isHistoryLoading } =
+    useStudentHistory({
+      refetchInterval: 3000,
+    });
+  const historyList = historyResponse?.data || [];
+
+  // 🔌 LUỒNG CHỮA CHÁY: Ép Socket.io khôi phục kết nối nếu bị ngắt trước đó
   useEffect(() => {
-    if (hasNavigated.current) return; // Nếu đã kích hoạt điều hướng rồi thì bỏ qua luồng check
-
-    if (historyList.length > 0 && sessionId) {
-      // Dò tìm chính xác hàng dữ liệu ghi danh của sinh viên này trong buổi học hiện tại
-      const currentRoomRecord = historyList.find(
-        (item) => item.sessionId === sessionId,
+    if (socket && !isConnected) {
+      console.log(
+        "🔌 [WaitingRoom] Phát hiện Socket đang đóng. Ép khởi động kết nối hỏa tốc...",
       );
-
-      // KỊCH BẢN 1: Nếu Giảng viên bấm Phê duyệt (APPROVED)
-      if (currentRoomRecord?.joinStatus === "APPROVED") {
-        console.log("🎉 APPROVED -> Tiến quân thẳng vào phòng học WebRTC!");
-        hasNavigated.current = true; // Khóa chốt rào chặn lập tức
-        navigate(ROUTES.STUDENT.ROOM.replace(":sessionId", sessionId), {
-          replace: true,
-        });
-        return;
-      }
-
-      // KỊCH BẢN 2: Nếu Giảng viên bấm Từ chối (REJECTED) hoặc xóa row khỏi danh sách chờ duyệt
-      if (currentRoomRecord?.joinStatus === "REJECTED" || !currentRoomRecord) {
-        console.warn("❌ Yêu cầu gia nhập phòng học bị từ chối.");
-        alert("Giảng viên đã từ chối yêu cầu tham gia lớp học của bạn.");
-        hasNavigated.current = true; // Khóa chốt rào chặn lập tức
-        navigate(ROUTES.STUDENT.JOIN, { replace: true });
-        return;
-      }
+      socket.connect();
     }
-  }, [historyList, sessionId, navigate]);
+  }, [socket, isConnected]);
 
-  const handleCancelWait = () => {
+  // 🔄 LUỒNG 1: Xử lý cứu hộ khẩn cấp ngay khi vừa mount trang
+  useEffect(() => {
     if (
-      window.confirm(
+      hasNavigated.current ||
+      isHistoryLoading ||
+      !sessionId ||
+      !historyList.length
+    )
+      return;
+
+    const rawHistoryArray = historyList as unknown as Array<{
+      sessionId: string;
+      session?: { id: string };
+      joinStatus?: string;
+      status?: string;
+    }>;
+
+    const initialRecord = rawHistoryArray.find(
+      (item) => item.sessionId === sessionId || item.session?.id === sessionId,
+    );
+
+    const currentStatus = initialRecord?.joinStatus || initialRecord?.status;
+    console.log(
+      "🔍 [WaitingRoom Radar Check] Trạng thái bản ghi hiện tại:",
+      currentStatus,
+    );
+
+    if (currentStatus === "APPROVED") {
+      hasNavigated.current = true;
+      // Xóa bộ nhớ đệm trước khi bay vào lớp
+      queryClient.invalidateQueries({
+        queryKey: ["sessions", "student-history"],
+      });
+      navigate(ROUTES.STUDY_ROOM.replace(":sessionId", sessionId), {
+        replace: true,
+      });
+    } else if (currentStatus === "REJECTED") {
+      hasNavigated.current = true;
+      alert("Giảng viên đã từ chối yêu cầu tham gia lớp học của bạn.");
+      navigate(ROUTES.STUDENT_JOIN, { replace: true });
+    }
+  }, [historyList, isHistoryLoading, sessionId, navigate, queryClient]);
+
+  // ⚡ LUỒNG 2: ĐỘNG CƠ REAL-TIME KÍCH NỔ CHUYỂN TRANG LẬP TỨC
+  useEffect(() => {
+    if (!socket || !sessionId) return;
+
+    console.log(
+      "🛰️ [WaitingRoom] Đang lắng nghe tín hiệu phê duyệt từ giảng viên...",
+    );
+
+    socket.on(
+      SOCKET_EVENTS.PARTICIPANT_APPROVED,
+      (payload: { sessionId: string }) => {
+        if (hasNavigated.current) return;
+        if (payload.sessionId === sessionId) {
+          console.log("🟢 [Real-time Socket] Giảng viên đã duyệt vào lớp!");
+          hasNavigated.current = true;
+          queryClient.invalidateQueries({
+            queryKey: ["sessions", "student-history"],
+          });
+          navigate(ROUTES.STUDY_ROOM.replace(":sessionId", sessionId), {
+            replace: true,
+          });
+        }
+      },
+    );
+
+    socket.on(
+      SOCKET_EVENTS.PARTICIPANT_REJECTED,
+      (payload: { sessionId: string }) => {
+        if (hasNavigated.current) return;
+        if (payload.sessionId === sessionId) {
+          hasNavigated.current = true;
+          alert("Giảng viên đã từ chối yêu cầu tham gia lớp học của bạn.");
+          navigate(ROUTES.STUDENT_JOIN, { replace: true });
+        }
+      },
+    );
+
+    return () => {
+      console.log(
+        "🧹 [WaitingRoom] Thu hồi toàn bộ Listener phòng chờ sinh viên.",
+      );
+      socket.off(SOCKET_EVENTS.PARTICIPANT_APPROVED);
+      socket.off(SOCKET_EVENTS.PARTICIPANT_REJECTED);
+    };
+  }, [socket, sessionId, navigate, queryClient]);
+
+  // 🎯 THUẬT TOÁN HỦY HÀNG CHỜ ĐỒNG BỘ ĐA TẦNG
+  const handleCancelWait = async () => {
+    if (
+      !window.confirm(
         "Bạn có chắc chắn muốn hủy yêu cầu tham gia và quay lại trang tìm phòng không?",
       )
     ) {
-      navigate(ROUTES.STUDENT.JOIN);
+      return;
+    }
+
+    try {
+      console.log(
+        "📡 [WaitingRoom] Phát lệnh hủy hàng chờ đồng bộ xuống Database...",
+      );
+
+      // Tái sử dụng endpoint leave thông minh để chuyển bản ghi PENDING sang LEFT dưới DB
+      // và kích nổ Socket thông báo cho Giáo viên trừ số lượng hàng chờ ngay lập tức!
+      await api.patch(`/sessions/${sessionId}/leave`);
+
+      // Khơi thông bộ nhớ đệm lịch sử của học sinh
+      queryClient.invalidateQueries({
+        queryKey: ["sessions", "student-history"],
+      });
+    } catch (err) {
+      console.warn(
+        "⚠️ [WaitingRoom Cancel] Không thể đồng bộ lệnh hủy lên Server:",
+        err,
+      );
+    } finally {
+      // Hộ tống học sinh quay về sảnh chính nhập mã
+      navigate(ROUTES.STUDENT_JOIN, { replace: true });
     }
   };
 
+  // Chờ nạp thông tin tĩnh ban đầu
   if (isDetailsLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-3 text-slate-500">
@@ -88,16 +196,17 @@ export default function WaitingRoomPage() {
 
   if (!sessionData) {
     return (
-      <div className="max-w-xl mx-auto bg-white rounded-[2.5rem] border border-slate-200 p-10 text-center shadow-sm">
+      <div className="max-w-xl mx-auto bg-white rounded-[2.5rem] border border-slate-200 p-10 text-center shadow-sm mt-10">
         <ShieldAlert className="text-rose-500 mx-auto mb-4" size={48} />
         <h3 className="text-xl font-black text-slate-900 mb-2">
           Phiên làm việc không hợp lệ
         </h3>
         <p className="text-sm text-slate-500 font-medium mb-6">
-          Không tìm thấy thông tin buổi học trực tuyến này trong hệ thống.
+          Không tìm thấy thông tin buổi học trực tuyến này trong hệ thống hoặc
+          định dạng trả về bị lệch pha.
         </p>
         <button
-          onClick={() => navigate(ROUTES.STUDENT.JOIN)}
+          onClick={() => navigate(ROUTES.STUDENT_JOIN)}
           className="px-6 py-3 bg-slate-950 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
         >
           QUAY LẠI TRANG ĐĂNG NHẬP MÃ
@@ -107,7 +216,8 @@ export default function WaitingRoomPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 mt-6">
+      {/* Nút thoát nhanh ở góc */}
       <button
         onClick={handleCancelWait}
         className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-slate-700 transition-colors mb-8 group"
@@ -119,6 +229,7 @@ export default function WaitingRoomPage() {
         Hủy yêu cầu vào lớp
       </button>
 
+      {/* KHUNG TRUNG TÂM PHÒNG CHỜ */}
       <div className="bg-white border border-slate-200 rounded-[3rem] p-8 md:p-12 shadow-sm relative overflow-hidden flex flex-col items-center text-center">
         {/* Radar Animation */}
         <div className="relative w-24 h-24 flex items-center justify-center mb-8">
@@ -132,6 +243,19 @@ export default function WaitingRoomPage() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">
           Waiting for <span className="text-blue-600">Approval</span>
         </h1>
+
+        {/* 🟢 ĐÈN CHỈ BÁO KẾT NỐI REAL-TIME TRỰC QUAN TRÊN UI */}
+        <div className="mb-8 flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-[10px] font-bold tracking-wide uppercase">
+          <span
+            className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`}
+          />
+          <span className={isConnected ? "text-emerald-600" : "text-rose-600"}>
+            {isConnected
+              ? "Real-time Pipeline Active"
+              : "Connecting to socket..."}
+          </span>
+        </div>
+
         <p className="text-slate-500 font-medium max-w-md text-sm leading-relaxed mb-8">
           Yêu cầu gia nhập của bạn đã được gửi đi thành công. Vui lòng giữ
           nguyên màn hình, Giảng viên sẽ phê duyệt cho bạn vào lớp ngay bây giờ.
@@ -144,7 +268,7 @@ export default function WaitingRoomPage() {
           </div>
           <div>
             <span className="text-[10px] font-bold text-blue-600 tracking-widest uppercase block mb-0.5">
-              Môn học: {sessionData.class.name}
+              Môn học: {sessionData.class?.name || "N/A"}
             </span>
             <h4 className="font-extrabold text-slate-900 text-base leading-tight uppercase">
               {sessionData.title}

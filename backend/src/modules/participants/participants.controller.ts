@@ -7,6 +7,7 @@ import { HTTP_STATUS, MESSAGES } from "../../common/constants";
 import { sendResponse } from "../../common/utils/response.util";
 import { asyncHandler } from "../../common/utils/async-handler.util";
 import { JoinStatus } from "@prisma/client";
+import { prisma } from "../../prisma/client";
 
 export const participantsController = {
   joinSession: asyncHandler(async (req: Request, res: Response) => {
@@ -78,14 +79,55 @@ export const participantsController = {
   }),
 
   leaveSession: asyncHandler(async (req: Request, res: Response) => {
-    const studentId = req.user!.id;
+    const { participantId, sessionId } = req.params;
+    const studentId = req.user!.id; // Bốc chuẩn xác ID học sinh từ token an toàn toàn cục
 
+    let targetParticipantId = participantId;
+    let originStatus: string | undefined = undefined;
+
+    // 🧠 TRA CỨU HÀNG CHỜ KIÊN CỐ: Giải phóng rào chắn leftAt để quét trúng bản ghi PENDING
+    if (sessionId && !targetParticipantId) {
+      const activeRecord = await prisma.sessionParticipant.findFirst({
+        where: {
+          sessionId,
+          studentId,
+          joinStatus: {
+            in: [JoinStatus.APPROVED, JoinStatus.PENDING],
+          },
+        },
+        orderBy: {
+          id: "desc", // Luôn luôn bốc yêu cầu mới nhất vừa sinh ra ở lượt nhập mã này
+        },
+      });
+
+      if (activeRecord) {
+        targetParticipantId = activeRecord.id;
+        originStatus = activeRecord.joinStatus; // Ghi nhớ lại trạng thái gốc (PENDING hoặc APPROVED)
+      }
+    }
+
+    if (!targetParticipantId) {
+      return sendResponse(
+        res,
+        HTTP_STATUS.NOT_FOUND,
+        "Không tìm thấy phiên làm việc hoặc yêu cầu xếp hàng hợp lệ để thực hiện tác vụ.",
+      );
+    }
+
+    // Đẩy xuống tầng Service bồ đã vá Guard State cho phép APPROVED và PENDING đi qua
     const result = await participantsService.leaveSession(
-      req.params.participantId,
+      targetParticipantId,
       studentId,
     );
 
-    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.LEFT_SESSION, result);
+    // 🎯 THUẬT TOÁN PHÂN NHÁNH MESSAGE NGỮ CẢNH:
+    // Nếu trạng thái ban đầu là PENDING -> Trả về thông báo Hủy, nếu là APPROVED -> Báo Rời lớp
+    const successMessage =
+      originStatus === JoinStatus.PENDING
+        ? "Hủy yêu cầu tham gia lớp học thành công."
+        : "Rời khỏi phòng học trực tuyến thành công.";
+
+    return sendResponse(res, HTTP_STATUS.OK, successMessage, result);
   }),
 
   approveAllParticipants: asyncHandler(async (req: Request, res: Response) => {

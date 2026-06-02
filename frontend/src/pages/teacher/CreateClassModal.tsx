@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { X, Globe, User, Folder, Book, Loader2 } from "lucide-react";
 import { useCreateClass } from "../../services/classes/classes.queries";
+import { useAuthStore } from "../../stores/auth.store"; // 🎯 NẠP AUTH STORE ĐỂ DỌN HARD-CODE
 
 interface CreateClassModalProps {
   isOpen: boolean;
@@ -12,15 +13,19 @@ interface CreateClassModalProps {
 }
 
 const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
+  // 👥 Trích xuất danh tính động của Giảng viên đang thao tác hệ thống
+  const user = useAuthStore((s) => s.user);
+
   const [className, setClassName] = useState("");
   const [classDescription, setClassDescription] = useState("");
   const [tags, setTags] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("book");
   const [error, setError] = useState("");
 
-  // 📡 KẾT NỐI API: Gọi mutation tạo lớp học và bóc tách trạng thái pending ngầm
+  // 📡 KẾT NỐI API: Gọi mutation tạo lớp học từ TanStack Query
   const { mutate: createClass, isPending } = useCreateClass();
 
+  // Khóa chặn vị trí đặt điều kiện return để không vi phạm luật Rules of Hooks
   if (!isOpen) return null;
 
   const handleCreateClass = (e: React.FormEvent) => {
@@ -32,15 +37,21 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
       return;
     }
 
+    if (!classDescription.trim()) {
+      setError("Vui lòng nhập mô tả chi tiết cho môn học này");
+      return;
+    }
+
     // 📡 Kích nổ API đẩy dữ liệu xuống Database
     createClass(
       {
         name: className.trim(),
-        description: classDescription.trim() || undefined,
+        description: classDescription.trim(),
+        // Bồ có thể bổ sung thêm trường tags hoặc avatar xuống payload nếu API backend mở rộng hỗ trợ sau này
       },
       {
         onSuccess: () => {
-          // Làm sạch form hoàn toàn trước khi rút lui
+          // Làm sạch form hoàn toàn trước khi rút lui đóng màn hình ẩn
           setClassName("");
           setClassDescription("");
           setTags("");
@@ -59,8 +70,8 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-      {/* Màn che mờ đóng modal khi click ra ngoài */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      {/* Màn che mờ đóng modal khi click ra ngoài (Chặn click nếu đang gửi data ngầm) */}
       <div
         className="absolute inset-0"
         onClick={() => !isPending && onClose()}
@@ -68,13 +79,13 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
 
       {/* Modal Container */}
       <div
-        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-300 relative z-10"
+        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-300 relative z-10"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         <style>{`div::-webkit-scrollbar { display: none; }`}</style>
 
         {/* Header */}
-        <div className="flex items-center justify-between p-8 border-b border-slate-50 sticky top-0 bg-white z-10">
+        <div className="flex items-center justify-between p-8 border-b border-slate-100 sticky top-0 bg-white z-10">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
               Create New Discipline
@@ -84,6 +95,7 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={isPending}
             className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors disabled:opacity-50"
@@ -93,17 +105,18 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
         </div>
 
         <div className="p-8">
-          {/* Instructor Info */}
+          {/* Instructor Info — 🎯 FIX CHỐT LUỒNG: Đồng bộ danh tính động chuẩn xác */}
           <div className="bg-blue-50/50 p-4 rounded-2xl mb-6 text-sm text-blue-800 border border-blue-100 flex items-center gap-3">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
             <span>
-              <strong>Instructor:</strong> Hoàng Huy
+              <strong>Instructor:</strong>{" "}
+              {user?.fullName || "Giảng viên chủ phòng"}
             </span>
           </div>
 
           {/* Khung báo lỗi từ Server */}
           {error && (
-            <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-600">
+            <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-600 animate-in fade-in duration-200">
               {error}
             </div>
           )}

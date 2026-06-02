@@ -21,6 +21,8 @@ export interface SessionItem {
 export interface CreateSessionPayload {
   title: string;
   requireApproval: boolean;
+  startedAt: string;
+  endedAt: string;
 }
 
 // 📩 3. Phản hồi cho các thao tác Single Session (Tạo mới, Start, End)

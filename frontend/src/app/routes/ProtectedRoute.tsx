@@ -4,7 +4,7 @@ import { useAuthStore } from "../../stores/auth.store";
 import { ROUTES } from "../../constants/routes.constants";
 
 interface ProtectedRouteProps {
-  children: React.ReactElement;
+  children: React.ReactNode;
   allowedRoles?: ("STUDENT" | "TEACHER")[];
 }
 

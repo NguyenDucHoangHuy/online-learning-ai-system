@@ -1,4 +1,5 @@
-import { Routes, Route } from "react-router-dom";
+// src/app/routes/index.ts
+import { Routes, Route, Outlet } from "react-router-dom"; // 🎯 Nạp thêm Outlet để phân tách không gian Layout
 import { ROUTES } from "../../constants";
 import { ProtectedRoute } from "./ProtectedRoute";
 
@@ -19,8 +20,9 @@ import CreateSessionPage from "../../pages/teacher/CreateSessionPage";
 import TeachingRoomPage from "../../pages/teacher/TeachingRoomPage";
 import SessionHistoryPage from "../../pages/teacher/SessionHistoryPage";
 import SessionReportPage from "../../pages/teacher/SessionReportPage";
-import HomePage from "../../pages/public/HomePage"; // <-- Thêm dòng này
+import HomePage from "../../pages/public/HomePage";
 import NotFoundPage from "../../pages/common/NotFoundPage";
+import WaitingRoomPage from "../../pages/student/WaitingRoomPage";
 
 export const AppRoutes = () => {
   return (
@@ -32,6 +34,7 @@ export const AppRoutes = () => {
       </Route>
 
       {/* ================= CHUỖI DÀNH CHO HỌC SINH (STUDENT ONLY) ================= */}
+      {/* Phân khu A: Các trang hành chính học tập (CÓ SIDEBAR) */}
       <Route
         element={
           <ProtectedRoute allowedRoles={["STUDENT"]}>
@@ -40,11 +43,25 @@ export const AppRoutes = () => {
         }
       >
         <Route path={ROUTES.STUDENT_JOIN} element={<JoinClassPage />} />
+        {/* 🎯 BỔ SUNG GĂM THẲNG VÀO ĐÂY CHỐT LUỒNG CHỐNG LỖI 404 */}
+        <Route path={ROUTES.STUDENT_WAITING} element={<WaitingRoomPage />} />
         <Route path={ROUTES.STUDENT.HISTORY} element={<MyLearningPage />} />
+      </Route>
+
+      {/* Phân khu B: Phòng học trực tuyến biệt lập (🎯 FULL SCREEN - KHÔNG SIDEBAR) */}
+      <Route
+        element={
+          <ProtectedRoute allowedRoles={["STUDENT"]}>
+            <Outlet />{" "}
+            {/* Chạy Outlet sạch để chiếm trọn vẹn không gian màn hình */}
+          </ProtectedRoute>
+        }
+      >
         <Route path={ROUTES.STUDY_ROOM} element={<StudyRoomPage />} />
       </Route>
 
       {/* ================= CHUỖI DÀNH CHO GIÁO VIÊN (TEACHER ONLY) ================= */}
+      {/* Phân khu A: Các trang quản lý hành chính học phần (CÓ SIDEBAR) */}
       <Route
         element={
           <ProtectedRoute allowedRoles={["TEACHER"]}>
@@ -60,11 +77,21 @@ export const AppRoutes = () => {
         />
         <Route path={ROUTES.TEACHER.HISTORY} element={<SessionHistoryPage />} />
         <Route path={ROUTES.TEACHER.REPORT} element={<SessionReportPage />} />
+      </Route>
+
+      {/* Phân khu B: Phòng dạy học trực tuyến biệt lập (🎯 FULL SCREEN - KHÔNG SIDEBAR) */}
+      <Route
+        element={
+          <ProtectedRoute allowedRoles={["TEACHER"]}>
+            <Outlet />{" "}
+            {/* Chạy Outlet sạch để giải phóng 100% không gian cho WebRTC & AI canvas */}
+          </ProtectedRoute>
+        }
+      >
         <Route path={ROUTES.TEACHER_SESSION} element={<TeachingRoomPage />} />
       </Route>
 
       {/* ================= ĐIỀU HƯỚNG MẶC ĐỊNH & BẪY LỖI ================= */}
-      {/* Trang báo lỗi phân quyền trái phép */}
       <Route
         path={ROUTES.UNAUTHORIZED}
         element={
@@ -85,10 +112,7 @@ export const AppRoutes = () => {
         }
       />
 
-      {/* SỬA TẠI ĐÂY: Gõ URL gốc "/" thì hiển thị trực tiếp Landing Page của EduSense */}
       <Route path={ROUTES.HOME} element={<HomePage />} />
-
-      {/* Bẫy tất cả các URL gõ bậy bạ ra màn hình 404 */}
       <Route path={ROUTES.NOT_FOUND} element={<NotFoundPage />} />
     </Routes>
   );

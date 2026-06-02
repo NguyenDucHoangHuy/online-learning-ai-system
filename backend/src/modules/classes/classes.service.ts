@@ -127,3 +127,31 @@ export const deleteClass = async (classId: string, teacherId: string) => {
     },
   });
 };
+
+export const getDashboardStats = async (teacherId: string) => {
+  // 1. Thực hiện thuật toán đếm tổng số lớp học do chính giảng viên này làm chủ
+  const totalClasses = await prisma.class.count({
+    where: { teacherId },
+  });
+
+  // 2. Thực hiện thuật toán đếm tổng số buổi học nằm trong tất cả các lớp của giảng viên này
+  const totalSessions = await prisma.classSession.count({
+    where: {
+      class: {
+        teacherId,
+      },
+    },
+  });
+
+  // 3. Trả về gói tin đóng gói hoàn mỹ định dạng camelCase ăn khớp 100% với Frontend của bồ
+  return {
+    totalClasses,
+    totalSessions,
+    avgAttention: 85, // Chỉ số Mock-up phân tích AI (Sẽ dynamic ở phân hệ Report sau)
+    questionsAsked: 12, // Chỉ số Mock-up đếm tin nhắn trò chuyện câu hỏi
+    classesChange: "+12%", // Chỉ số Mock-up xu hướng
+    sessionsChange: "+8%", // Chỉ số Mock-up xu hướng
+    attentionChange: "+4%",
+    questionsChange: "+15%",
+  };
+};

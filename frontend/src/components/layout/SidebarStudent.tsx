@@ -3,6 +3,8 @@ import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Home, Clock, User, LogOut } from "lucide-react";
 import { ROUTES } from "../../constants";
+// 🎯 BỔ SUNG: Nạp kho trạng thái xác thực toàn cục
+import { useAuthStore } from "../../stores/auth.store";
 
 interface SidebarProps {
   onSignOut?: () => void;
@@ -12,13 +14,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onSignOut }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // 🎯 BỔ SUNG: Bốc thông tin sinh viên đang đăng nhập thực tế
+  const user = useAuthStore((s) => s.user);
+
   const currentPath = location.pathname;
 
   // ===== ACTIVE LOGIC =====
-  const isJoinActive = currentPath === ROUTES.STUDENT.JOIN;
+  const isJoinActive = currentPath === ROUTES.STUDENT_JOIN;
   const isHistoryActive = currentPath === ROUTES.STUDENT.HISTORY;
-
-  // ⚠️ ROOM có param nên phải dùng startsWith
   const isRoomActive = currentPath.startsWith("/student/room");
 
   return (
@@ -34,7 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSignOut }) => {
             <span className="font-extrabold text-[15px] text-slate-900">
               EduSense
             </span>
-            <span className="text-[10px] text-slate-500 tracking-[0.15em] font-bold">
+            <span className="text-[10px] text-slate-400 tracking-[0.15em] font-bold">
               PLATFORM
             </span>
           </div>
@@ -44,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSignOut }) => {
         <nav className="flex flex-col gap-2">
           {/* JOIN CLASS */}
           <button
-            onClick={() => navigate(ROUTES.STUDENT.JOIN)}
+            onClick={() => navigate(ROUTES.STUDENT_JOIN)}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all w-full text-left ${
               isJoinActive || isRoomActive
                 ? "bg-slate-100 text-slate-900"
@@ -82,16 +85,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onSignOut }) => {
 
       {/* BOTTOM */}
       <div className="border-t border-slate-100 pt-6">
-        {/* USER */}
+        {/* USER INFO BOX */}
         <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0">
             <User size={16} />
           </div>
           <div className="flex flex-col overflow-hidden">
-            <span className="text-xs font-bold text-slate-700 truncate">
-              HOÀNG HUY
+            {/* 🎯 ĐÃ PHẲNG HÓA: Hiện chuẩn xác tên Sinh viên từ Auth Store */}
+            <span className="text-xs font-black text-slate-800 truncate uppercase tracking-wide">
+              {user?.fullName || "Học viên"}
             </span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mt-0.5">
               Sinh viên
             </span>
           </div>

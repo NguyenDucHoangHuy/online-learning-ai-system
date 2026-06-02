@@ -22,6 +22,13 @@ router.post(
   participantsController.joinSession,
 );
 
+// 🎯 BỔ SUNG CHỐT LUỒNG: Học sinh rời phòng dựa trên sessionId (Khớp chuẩn chỉnh với Front-end gọi)
+router.patch(
+  "/sessions/:sessionId/leave",
+  authorize([Role.STUDENT]),
+  participantsController.leaveSession, // Dùng chung hàm xử lý leaveSession thông minh của bồ
+);
+
 // Leave room
 router.patch(
   "/participants/:participantId/leave",

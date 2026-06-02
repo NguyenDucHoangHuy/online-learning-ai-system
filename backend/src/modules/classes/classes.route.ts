@@ -19,6 +19,9 @@ router.use(authenticate);
 router.use(authorize([Role.TEACHER]));
 
 // ==================== ROUTES ====================
+
+router.get("/dashboard/stats", classesController.getDashboardStats);
+
 router.post("/", classesValidation.createClass, classesController.createClass);
 
 router.get("/", classesController.getMyClasses);
