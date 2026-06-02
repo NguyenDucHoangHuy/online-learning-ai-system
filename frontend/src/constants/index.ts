@@ -15,7 +15,7 @@ export const ROUTES = {
     CREATE_SESSION: "/teacher/create-session",
     SESSION: FLAT_ROUTES.TEACHER_SESSION,
     HISTORY: "/teacher/history",
-    REPORT: "/teacher/report",
+    REPORT: FLAT_ROUTES.TEACHER_REPORT, // <--- 🎯 SỬA DÒNG NÀY: Dùng FLAT_ROUTES.TEACHER_REPORT thay vì chuỗi tĩnh bồ nha!
   },
 } as const;
 

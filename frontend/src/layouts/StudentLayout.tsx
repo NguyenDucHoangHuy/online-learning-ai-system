@@ -6,7 +6,7 @@ export default function StudentLayout() {
     <div className="flex">
       <Sidebar />
 
-      <main className="flex-1 ml-[270px] p-6">
+      <main className="min-w-0 flex-1 p-0 md:ml-[270px] md:p-6">
         <Outlet />
       </main>
     </div>

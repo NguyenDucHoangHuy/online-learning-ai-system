@@ -1,5 +1,5 @@
 // src/pages/student/WaitingRoomPage.tsx
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Clock,
@@ -14,6 +14,7 @@ import {
   useSessionDetail,
   useStudentHistory,
 } from "../../services/sessions/sessions.queries";
+import { useSocket } from "../../socket/useSocket";
 
 export default function WaitingRoomPage() {
   const navigate = useNavigate();
@@ -34,6 +35,37 @@ export default function WaitingRoomPage() {
   // 🎯 CHỐT 8: Rào chắn ngăn chặn tình trạng spam điều hướng liên tục khi component chưa kịp unmount
   const hasNavigated = useRef(false);
 
+  const enterStudentRoom = useCallback(() => {
+    if (!sessionId) return;
+
+    hasNavigated.current = true;
+    navigate(ROUTES.STUDENT.ROOM.replace(":sessionId", sessionId), {
+      replace: true,
+    });
+  }, [navigate, sessionId]);
+
+  const leaveWaitingRoom = useCallback(() => {
+    alert("Giảng viên đã từ chối yêu cầu tham gia lớp học của bạn.");
+    hasNavigated.current = true;
+    navigate(ROUTES.STUDENT.JOIN, { replace: true });
+  }, [navigate]);
+
+  useSocket({
+    onParticipantApproved: (payload) => {
+      if (payload.sessionId === sessionId) {
+        enterStudentRoom();
+      }
+    },
+    onParticipantRejected: (payload) => {
+      if (payload.sessionId === sessionId) {
+        leaveWaitingRoom();
+      }
+    },
+    onConnectError: (error) => {
+      console.warn("Socket connection failed:", error.message);
+    },
+  });
+
   // 🔄 LOOP NGHIỆP VỤ CHUẨN: Đồng bộ 100% logic phê duyệt cá nhân
   useEffect(() => {
     if (hasNavigated.current) return; // Nếu đã kích hoạt điều hướng rồi thì bỏ qua luồng check
@@ -48,22 +80,19 @@ export default function WaitingRoomPage() {
       if (currentRoomRecord?.joinStatus === "APPROVED") {
         console.log("🎉 APPROVED -> Tiến quân thẳng vào phòng học WebRTC!");
         hasNavigated.current = true; // Khóa chốt rào chặn lập tức
-        navigate(ROUTES.STUDENT.ROOM.replace(":sessionId", sessionId), {
-          replace: true,
-        });
+        enterStudentRoom();
         return;
       }
 
-      // KỊCH BẢN 2: Nếu Giảng viên bấm Từ chối (REJECTED) hoặc xóa row khỏi danh sách chờ duyệt
-      if (currentRoomRecord?.joinStatus === "REJECTED" || !currentRoomRecord) {
+      // KỊCH BẢN 2: Chỉ rời phòng khi server xác nhận REJECTED.
+      // Không thấy record có thể chỉ là cache history chưa kịp refetch sau khi join.
+      if (currentRoomRecord?.joinStatus === "REJECTED") {
         console.warn("❌ Yêu cầu gia nhập phòng học bị từ chối.");
-        alert("Giảng viên đã từ chối yêu cầu tham gia lớp học của bạn.");
-        hasNavigated.current = true; // Khóa chốt rào chặn lập tức
-        navigate(ROUTES.STUDENT.JOIN, { replace: true });
+        leaveWaitingRoom();
         return;
       }
     }
-  }, [historyList, sessionId, navigate]);
+  }, [historyList, sessionId, enterStudentRoom, leaveWaitingRoom]);
 
   const handleCancelWait = () => {
     if (

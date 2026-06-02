@@ -37,6 +37,25 @@ export const sessionsController = {
     return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
   }),
 
+  getTeacherSessions: asyncHandler(async (req: Request, res: Response) => {
+    const teacherId = req.user!.id;
+
+    const result = await sessionsService.getTeacherSessions(teacherId);
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
+  getTeacherDashboardStats: asyncHandler(
+    async (req: Request, res: Response) => {
+      const teacherId = req.user!.id;
+
+      const result =
+        await sessionsService.getTeacherDashboardStats(teacherId);
+
+      return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+    },
+  ),
+
   getSessionById: asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const userRole = req.user!.role;

@@ -13,6 +13,7 @@ export const ROUTES = {
   TEACHER_CLASSES: "/teacher/classes",
   TEACHER_CLASS_DETAIL: "/teacher/classes/:classId", // <-- Bổ sung: Xem chi tiết lớp để tạo Session
   TEACHER_SESSION: "/teacher/session/:sessionId",
+  TEACHER_REPORT: "/teacher/report/:sessionId",
 
   // Phân hệ bẫy lỗi hệ thống
   NOT_FOUND: "*",
@@ -27,4 +28,5 @@ export const getDynamicRoute = {
   studyRoom: (sessionId: string) => `/study-room/${sessionId}`,
   teacherClassDetail: (classId: string) => `/teacher/classes/${classId}`,
   teacherSession: (sessionId: string) => `/teacher/session/${sessionId}`,
+  teacherReport: (sessionId: string) => `/teacher/report/${sessionId}`,
 } as const;

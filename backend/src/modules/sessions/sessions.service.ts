@@ -50,6 +50,52 @@ const findOwnedSession = async (sessionId: string, teacherId: string) => {
   return session;
 };
 
+const attentionScoreByLevel = {
+  HIGH: 100,
+  MEDIUM: 60,
+  LOW: 25,
+} as const;
+
+const getDurationMinutes = (
+  joinedAt: Date | null,
+  leftAt: Date | null,
+  sessionEndedAt: Date | null,
+) => {
+  if (!joinedAt) return 0;
+
+  const endTime = leftAt ?? sessionEndedAt ?? new Date();
+  return Math.max(
+    0,
+    Math.round((endTime.getTime() - joinedAt.getTime()) / 1000 / 60),
+  );
+};
+
+const getPrimaryEmotion = (
+  logs: Array<{ emotion: string; confidence: number }>,
+) => {
+  if (logs.length === 0) return "NEUTRAL";
+
+  const emotionScores = logs.reduce<Record<string, number>>((acc, log) => {
+    acc[log.emotion] = (acc[log.emotion] ?? 0) + log.confidence;
+    return acc;
+  }, {});
+
+  return Object.entries(emotionScores).sort((a, b) => b[1] - a[1])[0][0];
+};
+
+const getAttentionIndex = (
+  logs: Array<{ attentionLevel: keyof typeof attentionScoreByLevel }>,
+) => {
+  if (logs.length === 0) return 0;
+
+  const total = logs.reduce(
+    (sum, log) => sum + attentionScoreByLevel[log.attentionLevel],
+    0,
+  );
+
+  return Math.round(total / logs.length);
+};
+
 export const sessionsService = {
   createSession: async (
     classId: string,
@@ -113,6 +159,108 @@ export const sessionsService = {
     });
   },
 
+  getTeacherSessions: async (teacherId: string) => {
+    return prisma.classSession.findMany({
+      where: {
+        class: {
+          teacherId,
+        },
+      },
+      include: {
+        _count: {
+          select: {
+            participants: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  },
+
+  getTeacherDashboardStats: async (teacherId: string) => {
+    const [totalClasses, totalSessions, questionsAsked, recentSessions] =
+      await Promise.all([
+        prisma.class.count({
+          where: { teacherId },
+        }),
+        prisma.classSession.count({
+          where: {
+            class: {
+              teacherId,
+            },
+          },
+        }),
+        prisma.chatMessage.count({
+          where: {
+            session: {
+              class: {
+                teacherId,
+              },
+            },
+          },
+        }),
+        prisma.classSession.findMany({
+          where: {
+            class: {
+              teacherId,
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+        }),
+      ]);
+
+    const [highAttentionLogs, totalAttentionLogs] = await Promise.all([
+      prisma.emotionLog.count({
+        where: {
+          attentionLevel: "HIGH",
+          participant: {
+            session: {
+              class: {
+                teacherId,
+              },
+            },
+          },
+        },
+      }),
+      prisma.emotionLog.count({
+        where: {
+          participant: {
+            session: {
+              class: {
+                teacherId,
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const avgAttention =
+      totalAttentionLogs === 0
+        ? "0%"
+        : `${Math.round((highAttentionLogs / totalAttentionLogs) * 100)}%`;
+
+    return {
+      stats: {
+        totalClasses,
+        totalSessions,
+        avgAttention,
+        questionsAsked,
+      },
+      recentSessions,
+    };
+  },
+
   getSessionById: async (sessionId: string, userId: string, role: Role) => {
     if (role === Role.TEACHER) {
       const session = await prisma.classSession.findFirst({
@@ -125,6 +273,35 @@ export const sessionsService = {
 
         include: {
           class: true,
+          participants: {
+            where: {
+              joinStatus: {
+                in: [JoinStatus.APPROVED, JoinStatus.LEFT],
+              },
+            },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                },
+              },
+              emotionLogs: {
+                orderBy: {
+                  recordedAt: "asc",
+                },
+              },
+            },
+            orderBy: [
+              {
+                joinedAt: {
+                  sort: "asc",
+                  nulls: "last",
+                },
+              },
+            ],
+          },
 
           _count: {
             select: {
@@ -139,7 +316,55 @@ export const sessionsService = {
         throw new AppError(MESSAGES.SESSION_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
       }
 
-      return session;
+      const reportParticipants = session.participants.map((participant) => ({
+        id: participant.id,
+        studentId: participant.studentId,
+        fullName: participant.student.fullName,
+        email: participant.student.email,
+        joinStatus: participant.joinStatus,
+        joinedAt: participant.joinedAt,
+        leftAt: participant.leftAt,
+        duration: getDurationMinutes(
+          participant.joinedAt,
+          participant.leftAt,
+          session.endedAt,
+        ),
+        attentionIndex: getAttentionIndex(participant.emotionLogs),
+        primaryState: getPrimaryEmotion(participant.emotionLogs),
+        emotionLogs: participant.emotionLogs,
+      }));
+
+      const emotionLogs = reportParticipants.flatMap((participant) =>
+        participant.emotionLogs.map((log) => ({
+          recordedAt: log.recordedAt,
+          attentionIndex: attentionScoreByLevel[log.attentionLevel],
+        })),
+      );
+
+      const timeline = emotionLogs
+        .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+        .map((log, index) => ({
+          minute: index,
+          attentionIndex: log.attentionIndex,
+          recordedAt: log.recordedAt,
+        }));
+
+      return {
+        ...session,
+        participants: reportParticipants,
+        reportSummary: {
+          averageAttention: getAttentionIndex(
+            session.participants.flatMap((participant) =>
+              participant.emotionLogs.map((log) => ({
+                attentionLevel: log.attentionLevel,
+              })),
+            ),
+          ),
+          totalParticipants: reportParticipants.length,
+          totalEmotionLogs: emotionLogs.length,
+        },
+        timeline,
+      };
     }
 
     const participant = await prisma.sessionParticipant.findFirst({
@@ -209,9 +434,14 @@ export const sessionsService = {
   },
 
   lookupSession: async (sessionCode: string) => {
+    const normalizedSessionCode = sessionCode.trim();
+
     const session = await prisma.classSession.findFirst({
       where: {
-        sessionCode,
+        sessionCode: {
+          equals: normalizedSessionCode,
+          mode: "insensitive",
+        },
         status: {
           in: [SessionStatus.WAITING, SessionStatus.ACTIVE],
         },

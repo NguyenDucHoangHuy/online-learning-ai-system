@@ -7,9 +7,13 @@ import { registerSocketHandlers } from "./index";
 let _io: Server;
 
 export const initSocketServer = (httpServer: HttpServer): Server => {
+  const allowedOrigins = env.CLIENT_URL.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   _io = new Server(httpServer, {
     cors: {
-      origin: env.CLIENT_URL || "http://localhost:5173",
+      origin: allowedOrigins,
       credentials: true,
     },
     transports: ["websocket", "polling"],

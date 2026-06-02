@@ -7,6 +7,9 @@ import { HTTP_STATUS, MESSAGES } from "../../common/constants";
 import { sendResponse } from "../../common/utils/response.util";
 import { asyncHandler } from "../../common/utils/async-handler.util";
 import { JoinStatus } from "@prisma/client";
+import { getIO } from "../../sockets/socket.server";
+import { SOCKET_EVENTS } from "../../sockets/socket.events";
+import { emitToStudent } from "../../sockets/utils/emit.util";
 
 export const participantsController = {
   joinSession: asyncHandler(async (req: Request, res: Response) => {
@@ -53,6 +56,12 @@ export const participantsController = {
       teacherId,
     );
 
+    emitToStudent(getIO(), result.studentId, SOCKET_EVENTS.PARTICIPANT_APPROVED, {
+      participantId: result.id,
+      sessionId: result.sessionId,
+      joinedAt: result.joinedAt,
+    });
+
     return sendResponse(
       res,
       HTTP_STATUS.OK,
@@ -68,6 +77,11 @@ export const participantsController = {
       req.params.participantId,
       teacherId,
     );
+
+    emitToStudent(getIO(), result.studentId, SOCKET_EVENTS.PARTICIPANT_REJECTED, {
+      participantId: result.id,
+      sessionId: result.sessionId,
+    });
 
     return sendResponse(
       res,

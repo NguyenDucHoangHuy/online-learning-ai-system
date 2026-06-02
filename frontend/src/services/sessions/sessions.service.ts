@@ -7,6 +7,7 @@ import {
   LookupSessionResponse,
   StudentHistoryResponse,
   SessionDetailResponse,
+  DashboardStatsResponse,
 } from "../../types/api";
 
 export const sessionsService = {
@@ -63,5 +64,15 @@ export const sessionsService = {
    */
   getStudentHistory: async (): Promise<StudentHistoryResponse> => {
     return api.get("/sessions/my-history");
+  },
+
+  getTeacherSessions: async (): Promise<SessionsResponse> => {
+    return api.get("/sessions/teacher-history");
+    // 💡 Ghi chú: Nếu endpoint backend của bồ đặt tên khác (ví dụ: "/sessions" hoặc "/sessions/all"), hãy sửa lại router này cho khớp nhé!
+  },
+
+  // Thêm vào cuối cùng của object sessionsService trong file src/services/sessions/sessions.service.ts
+  getDashboardStats: async (): Promise<DashboardStatsResponse> => {
+    return api.get("/sessions/teacher-dashboard/stats");
   },
 };

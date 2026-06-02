@@ -15,7 +15,10 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { ROUTES } from "../../constants";
 import { useClasses } from "../../services/classes/classes.queries";
-import { useCreateSession } from "../../services/sessions/sessions.queries";
+import {
+  useCreateSession,
+  useStartSession,
+} from "../../services/sessions/sessions.queries";
 
 const CreateSessionPage = () => {
   const navigate = useNavigate();
@@ -25,6 +28,8 @@ const CreateSessionPage = () => {
   // --- 📡 CONNECT API LAYERS ---
   const { data: classesResponse, isLoading: isClassesLoading } = useClasses();
   const { mutate: createSession, isPending: isLaunching } = useCreateSession();
+  const { mutateAsync: startSession, isPending: isStarting } =
+    useStartSession();
 
   const classesList = classesResponse?.data || [];
 
@@ -34,6 +39,7 @@ const CreateSessionPage = () => {
   const [sessionTitle, setSessionTitle] = useState("");
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [error, setError] = useState("");
+  const isBusy = isLaunching || isStarting;
 
   // FIX 3: Derived State — Tự động dò tìm thông tin lớp học chuẩn từ State của TanStack Query
   const selectedClass = classesList.find((c) => c.id === selectedClassId);
@@ -62,9 +68,21 @@ const CreateSessionPage = () => {
         },
       },
       {
-        onSuccess: (response) => {
+        onSuccess: async (response) => {
           const liveSessionId = response.data.id;
-          navigate(ROUTES.TEACHER.SESSION.replace(":sessionId", liveSessionId));
+
+          try {
+            await startSession(liveSessionId);
+            navigate(
+              ROUTES.TEACHER.SESSION.replace(":sessionId", liveSessionId),
+            );
+          } catch (err: unknown) {
+            setError(
+              err instanceof Error
+                ? err.message
+                : "Tạo phòng thành công nhưng chưa thể bắt đầu buổi học.",
+            );
+          }
         },
         onError: (err: unknown) => {
           setError(
@@ -148,7 +166,7 @@ const CreateSessionPage = () => {
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                 />
                 <select
-                  disabled={isClassesLoading || isLaunching}
+                  disabled={isClassesLoading || isBusy}
                   className={`w-full pl-12 pr-10 py-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none cursor-pointer font-bold disabled:opacity-50 ${
                     selectedClassId ? "text-blue-700" : "text-slate-400"
                   }`}
@@ -202,7 +220,7 @@ const CreateSessionPage = () => {
               </label>
               <Input
                 placeholder="e.g. Midterm Exam Review"
-                disabled={isLaunching}
+                disabled={isBusy}
                 value={sessionTitle}
                 onChange={(e) => setSessionTitle(e.target.value)}
                 className="bg-slate-50 border-slate-100 rounded-2xl p-7 font-bold text-slate-800 disabled:opacity-50"
@@ -236,12 +254,12 @@ const CreateSessionPage = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div
-                onClick={() => !isLaunching && setApprovalRequired(false)}
+                onClick={() => !isBusy && setApprovalRequired(false)}
                 className={`p-6 rounded-[2rem] border-2 cursor-pointer transition-all flex items-center gap-5 ${
                   !approvalRequired
                     ? "border-blue-600 bg-blue-50/50"
                     : "border-slate-100 bg-slate-50/50 hover:border-slate-200"
-                } ${isLaunching ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <div
                   className={`p-4 rounded-2xl transition-colors ${!approvalRequired ? "bg-blue-600 text-white shadow-md shadow-blue-600/20" : "bg-white text-slate-400 shadow-sm"}`}
@@ -261,12 +279,12 @@ const CreateSessionPage = () => {
               </div>
 
               <div
-                onClick={() => !isLaunching && setApprovalRequired(true)}
+                onClick={() => !isBusy && setApprovalRequired(true)}
                 className={`p-6 rounded-[2rem] border-2 cursor-pointer transition-all flex items-center gap-5 ${
                   approvalRequired
                     ? "border-blue-600 bg-blue-50/50"
                     : "border-slate-100 bg-slate-50/50 hover:border-slate-200"
-                } ${isLaunching ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${isBusy ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <div
                   className={`p-4 rounded-2xl transition-colors ${approvalRequired ? "bg-blue-600 text-white shadow-md shadow-blue-600/20" : "bg-white text-slate-400 shadow-sm"}`}
@@ -312,10 +330,10 @@ const CreateSessionPage = () => {
 
           <Button
             type="submit"
-            disabled={isLaunching || !sessionTitle || !selectedClassId}
+            disabled={isBusy || !sessionTitle || !selectedClassId}
             className="w-full py-8 bg-slate-900 hover:bg-slate-800 text-white rounded-[2rem] text-xl font-bold flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
           >
-            {isLaunching ? (
+            {isBusy ? (
               <>
                 <Loader2 size={24} className="animate-spin text-blue-400" />{" "}
                 Launching Room...

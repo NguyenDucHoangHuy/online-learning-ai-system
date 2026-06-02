@@ -10,8 +10,6 @@ import usersRoutes from "./modules/users/users.route";
 import sessionsRoutes from "./modules/sessions/sessions.route";
 import participantsRoutes from "./modules/participants/participants.route";
 import classesRoutes from "./modules/classes/classes.route";
-
-// thêm import
 import chatRoutes from "./modules/chat/chat.route";
 import emotionRoutes from "./modules/emotions/emotions.route";
 
@@ -22,9 +20,20 @@ const app = express();
 
 app.use(helmet());
 
+const allowedOrigins = env.CLIENT_URL.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: env.CLIENT_URL || "http://localhost:5173", // URL của Vite/React frontend
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     credentials: true,
   }),
 );
@@ -35,25 +44,15 @@ app.use(express.json());
 
 app.use(express.urlencoded({ extended: true }));
 
-// ================= ROUTES =================
-
 app.use("/api/auth", authRoutes);
-
 app.use("/api/users", usersRoutes);
-
 app.use("/api/classes", classesRoutes);
 app.use("/api", sessionsRoutes);
 app.use("/api", participantsRoutes);
-
-// thêm routes mới
 app.use("/api/chat", chatRoutes);
-
 app.use("/api/emotions", emotionRoutes);
 
-// ================= MIDDLEWARE =================
-
 app.use(notFoundMiddleware);
-
 app.use(errorMiddleware);
 
 export default app;

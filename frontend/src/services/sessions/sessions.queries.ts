@@ -1,5 +1,9 @@
 // src/services/sessions/sessions.queries.ts
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { sessionsService } from "./sessions.service";
 import { CreateSessionPayload } from "../../types/api";
 
@@ -8,6 +12,8 @@ export const SESSION_KEYS = {
   detail: (sessionId: string) => ["session", sessionId] as const,
   classSessions: (classId: string) => ["sessions", "class", classId] as const,
   studentHistory: ["sessions", "student-history"] as const, // Quản lý cache lịch sử sinh viên
+  teacherHistory: ["sessions", "teacher-history"] as const,
+  dashboardStats: ["sessions", "dashboard-stats"] as const,
 };
 
 /**
@@ -41,9 +47,21 @@ export const useCreateSession = () => {
       payload: CreateSessionPayload;
     }) => sessionsService.createSession(classId, payload),
 
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: SESSION_KEYS.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.classSessions(variables.classId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["classes"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.teacherHistory,
+      });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.dashboardStats,
       });
     },
   });
@@ -70,6 +88,12 @@ export const useStartSession = () => {
       queryClient.invalidateQueries({
         queryKey: SESSION_KEYS.detail(sessionId),
       });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.teacherHistory,
+      });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.dashboardStats,
+      });
     },
   });
 };
@@ -88,6 +112,12 @@ export const useEndSession = () => {
         queryKey: SESSION_KEYS.detail(sessionId),
       });
       queryClient.invalidateQueries({ queryKey: ["teacher-classes"] });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.teacherHistory,
+      });
+      queryClient.invalidateQueries({
+        queryKey: SESSION_KEYS.dashboardStats,
+      });
     },
   });
 };
@@ -115,5 +145,26 @@ export const useStudentHistory = (options?: {
     queryFn: sessionsService.getStudentHistory,
     staleTime: 1000 * 60 * 3, // Cache mặc định 3 phút
     ...options, // 🎯 CHỐT 7: Trải phẳng options để ghi đè cấu hình polling khi cần thiết
+  });
+};
+
+/* 🎯 BỔ SUNG: Hook tự động bốc toàn bộ lịch sử dạy học của Giáo viên
+ */
+export const useTeacherSessions = () => {
+  return useQuery({
+    queryKey: SESSION_KEYS.teacherHistory,
+    queryFn: sessionsService.getTeacherSessions,
+    refetchOnMount: "always",
+    staleTime: 1000 * 60 * 3, // Cache 3 phút
+  });
+};
+
+export const useTeacherDashboardStats = () => {
+  return useQuery({
+    queryKey: SESSION_KEYS.dashboardStats,
+    queryFn: sessionsService.getDashboardStats,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    staleTime: 1000 * 60 * 5, // Cache trong 5 phút để tối ưu hiệu năng
   });
 };

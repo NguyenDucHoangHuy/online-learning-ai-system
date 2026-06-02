@@ -1,7 +1,16 @@
 // src/types/api/session.types.ts
 
 export type SessionStatus = "WAITING" | "ACTIVE" | "ENDED";
-export type JoinStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type JoinStatus = "PENDING" | "APPROVED" | "REJECTED" | "LEFT";
+export type EmotionType =
+  | "HAPPY"
+  | "SAD"
+  | "ANGRY"
+  | "NEUTRAL"
+  | "SURPRISED"
+  | "FEARFUL"
+  | "DISGUSTED";
+export type AttentionLevel = "HIGH" | "MEDIUM" | "LOW";
 
 // 🧱 1. Thực thể gốc ClassSession trong Database
 export interface SessionItem {
@@ -56,6 +65,42 @@ export interface SessionDetailData extends SessionItem {
     participants: number;
     chatMessages: number;
   };
+  participants?: SessionReportParticipant[];
+  reportSummary?: {
+    averageAttention: number;
+    totalParticipants: number;
+    totalEmotionLogs: number;
+  };
+  timeline?: SessionReportTimelinePoint[];
+}
+
+export interface SessionReportEmotionLog {
+  id: string;
+  participantId: string;
+  emotion: EmotionType;
+  confidence: number;
+  attentionLevel: AttentionLevel;
+  recordedAt: string;
+}
+
+export interface SessionReportParticipant {
+  id: string;
+  studentId: string;
+  fullName: string;
+  email: string;
+  joinStatus: JoinStatus;
+  joinedAt: string | null;
+  leftAt: string | null;
+  duration: number;
+  attentionIndex: number;
+  primaryState: EmotionType | "NEUTRAL";
+  emotionLogs: SessionReportEmotionLog[];
+}
+
+export interface SessionReportTimelinePoint {
+  minute: number;
+  attentionIndex: number;
+  recordedAt: string;
 }
 
 export interface SessionDetailResponse {
@@ -116,4 +161,25 @@ export interface ParticipantHistoryItem {
 export interface StudentHistoryResponse {
   success: boolean;
   data: ParticipantHistoryItem[];
+}
+
+// Thêm vào cuối file src/types/api/session.types.ts
+
+export interface DashboardStatsData {
+  stats: {
+    totalClasses: number;
+    totalSessions: number;
+    avgAttention: string;
+    questionsAsked: number;
+  };
+  recentSessions: {
+    id: string;
+    title: string;
+    createdAt: string;
+  }[];
+}
+
+export interface DashboardStatsResponse {
+  success: boolean;
+  data: DashboardStatsData;
 }

@@ -1,11 +1,14 @@
 // src/components/ui/VideoTile.tsx
-import { MicOff, User } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { MicOff, User, VideoOff } from "lucide-react";
 
 interface VideoTileProps {
   name: string;
   role?: "teacher" | "student";
   attentionStatus?: "focused" | "normal" | "distracted";
   isMuted?: boolean;
+  stream?: MediaStream | null;
+  isLocal?: boolean;
 }
 
 export default function VideoTile({
@@ -13,7 +16,17 @@ export default function VideoTile({
   role = "student",
   attentionStatus = "normal",
   isMuted = true,
+  stream,
+  isLocal = false,
 }: VideoTileProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && videoRef.current.srcObject !== stream) {
+      videoRef.current.srcObject = stream ?? null;
+    }
+  }, [stream]);
+
   // Xác định màu viền dựa trên trạng thái AI
   const getBorderColor = () => {
     if (role === "teacher") return "border-blue-500/50"; // Viền xanh dương cho GV
@@ -31,10 +44,22 @@ export default function VideoTile({
     <div
       className={`aspect-video bg-slate-900 rounded-3xl border-2 ${getBorderColor()} relative overflow-hidden flex items-center justify-center group`}
     >
-      {/* Placeholder Avatar */}
-      <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center">
-        <User size={32} className="text-slate-600" />
-      </div>
+      {stream ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={isLocal}
+          className={`h-full w-full object-cover ${isLocal ? "scale-x-[-1]" : ""}`}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-3 text-slate-600">
+          <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center">
+            <User size={32} />
+          </div>
+          <VideoOff size={18} />
+        </div>
+      )}
 
       {/* Thông tin người dùng */}
       <div className="absolute bottom-4 left-4 flex flex-col">

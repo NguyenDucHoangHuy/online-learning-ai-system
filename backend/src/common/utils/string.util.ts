@@ -1,7 +1,7 @@
 // src/common/utils/string.util.ts
 import crypto from "crypto";
 
-const CHARS = "abcdefghijklmnopqrstuvwxyz";
+const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const randomChar = (): string => {
   // Lấy 1 byte ngẫu nhiên, modulo 26 để map vào alphabet

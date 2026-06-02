@@ -1,4 +1,3 @@
-// src/pages/student/MyLearningPage.tsx
 import {
   Calendar,
   CheckCircle2,
@@ -7,13 +6,59 @@ import {
   Loader2,
   Bookmark,
 } from "lucide-react";
-import { useStudentHistory } from "../../services/sessions/sessions.queries";
+import { useQuery } from "@tanstack/react-query";
 import { formatDate } from "../../utils/date";
 
+// 🎯 IMPORT STORE TOÀN CỤC VÀ FILE TYPE CHUẨN CỦA BẠN
+import { useAuthStore } from "../../stores/auth.store";
+import { ParticipantHistoryItem } from "../../types/api/session.types";
+
+// 📡 ĐỊNH NGHĨA URL GỐC KHÔNG CÓ /API
+// (Vì file router của bạn đã viết sẵn cứng cụm "/sessions/my-history")
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+// 📐 ĐỊNH NGHĨA INTERFACE TRẢ VỀ TỪ BACKEND ĐỂ FIX LỖI ESLINT ANY
+interface BackendResponse {
+  statusCode: number;
+  message: string;
+  data: ParticipantHistoryItem[];
+}
+
+// 🌐 CUSTOM HOOK KẾT NỐI API BACKEND
+const useStudentHistory = () => {
+  const accessToken = useAuthStore((state) => state.accessToken);
+
+  return useQuery<BackendResponse>({
+    queryKey: ["student-history", accessToken],
+    queryFn: async () => {
+      // 🎯 KHỚP HOÀN TOÀN VỚI ROUTER CỦA BẠN: http://localhost:3000/sessions/my-history
+      const response = await fetch(`${BASE_URL}/sessions/my-history`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || "Không thể tải lịch sử học tập từ hệ thống",
+        );
+      }
+
+      return response.json();
+    },
+    enabled: !!accessToken,
+  });
+};
+
+// ==================== MAIN COMPONENT ====================
 export default function MyLearningPage() {
-  // 📡 CONNECT API LAYER: Tự động bốc lịch sử học tập thật từ Database qua TanStack Query
-  const { data: historyResponse, isLoading } = useStudentHistory();
-  const historyList = historyResponse?.data || [];
+  const { data: apiResponse, isLoading, isError, error } = useStudentHistory();
+
+  // 🛡️ BÓC TÁCH DỮ LIỆU AN TOÀN TỪ CẤU TRÚC sendResponse CỦA CONTROLLER
+  const historyList: ParticipantHistoryItem[] = apiResponse?.data || [];
 
   return (
     <>
@@ -27,18 +72,26 @@ export default function MyLearningPage() {
         </p>
       </div>
 
-      {/* KHU VỰC DANH SÁCH LỚP HỌC */}
+      {/* KHU VỰC DANH SÁCH LỊCH SỬ HỌC TẬP */}
       <div className="flex flex-col gap-4 max-w-5xl">
+        {/* TH 1: Đang chờ Backend trả kết quả */}
         {isLoading ? (
-          // Trạng thái Skeleton Loading khi đang chờ dữ liệu mạng
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm">
             <Loader2 className="animate-spin text-blue-600" size={36} />
             <p className="font-bold text-xs uppercase tracking-wider text-slate-400">
               Loading your learning history...
             </p>
           </div>
-        ) : historyList.length === 0 ? (
-          // Trạng thái rỗng khi Học sinh chưa từng tham gia buổi học nào
+        ) : /* TH 2: Xuất hiện lỗi hệ thống */
+        isError ? (
+          <div className="text-center py-20 bg-red-50 text-red-600 rounded-[2.5rem] border border-red-200 shadow-sm">
+            <p className="font-bold mb-1">Đã có lỗi hệ thống xảy ra</p>
+            <p className="text-xs text-red-400 font-mono">
+              {(error as Error).message}
+            </p>
+          </div>
+        ) : /* TH 3: Mảng dữ liệu trống */
+        historyList.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[2.5rem] border border-dashed border-slate-200 shadow-sm animate-in fade-in duration-300">
             <Bookmark className="mx-auto text-slate-300 mb-4" size={48} />
             <h3 className="text-lg font-bold text-slate-800 mb-1">
@@ -50,32 +103,29 @@ export default function MyLearningPage() {
             </p>
           </div>
         ) : (
-          // Duyệt mảng dữ liệu thực tế bốc từ Prisma Backend lên
-          historyList.map((item) => {
-            const session = item.session;
-            const classData = session.class;
+          /* TH 4: Hiển thị dữ liệu thực tế mượt mà */
+          historyList.map((item: ParticipantHistoryItem) => {
+            const session = item?.session;
+            const classData = session?.class;
+
+            if (!session || !classData) return null;
 
             return (
               <div
                 key={item.id}
                 className="bg-white rounded-[2rem] p-5 md:p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-blue-300 hover:shadow-md transition-all duration-300 group animate-in fade-in slide-in-from-bottom-2 font-sans"
               >
-                {/* Khu vực thông tin bên trái */}
                 <div className="flex items-center gap-5 md:gap-6">
-                  {/* Icon khối mang phong cách phân tích dữ liệu AI */}
                   <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-sm">
                     <BarChart2 size={22} />
                   </div>
 
                   <div>
-                    {/* Tên bài học */}
                     <h3 className="text-base font-black text-slate-900 mb-2.5 tracking-tight group-hover:text-blue-600 transition-colors uppercase line-clamp-1">
                       {session.title}
                     </h3>
 
-                    {/* Metadata tags */}
                     <div className="flex flex-wrap items-center gap-3 md:gap-5 text-xs font-bold">
-                      {/* Ngày tham gia học */}
                       <div className="flex items-center gap-1.5 text-slate-500 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
                         <Calendar size={13} className="text-slate-400" />
                         <span className="text-slate-600">
@@ -83,7 +133,6 @@ export default function MyLearningPage() {
                         </span>
                       </div>
 
-                      {/* Trạng thái duyệt tham gia */}
                       <div
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${
                           item.joinStatus === "APPROVED"
@@ -101,7 +150,6 @@ export default function MyLearningPage() {
                         </span>
                       </div>
 
-                      {/* Mã code của phòng và tên môn học lồng kèm */}
                       <div className="flex items-center gap-1.5 text-slate-500 border-l border-slate-200 pl-3 md:pl-5">
                         <MapPin size={13} className="text-slate-400" />
                         <span className="text-slate-700 uppercase font-mono">
@@ -112,7 +160,6 @@ export default function MyLearningPage() {
                   </div>
                 </div>
 
-                {/* Khu vực nút bấm mở Báo cáo AI bên phải */}
                 <button
                   onClick={() =>
                     alert(

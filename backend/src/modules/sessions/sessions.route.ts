@@ -40,6 +40,18 @@ router.get(
   sessionsController.getSessionsByClass,
 );
 
+router.get(
+  "/sessions/teacher-history",
+  authorize([Role.TEACHER]),
+  sessionsController.getTeacherSessions,
+);
+
+router.get(
+  "/sessions/teacher-dashboard/stats",
+  authorize([Role.TEACHER]),
+  sessionsController.getTeacherDashboardStats,
+);
+
 router.patch(
   "/sessions/:sessionId/start",
   authorize([Role.TEACHER]),

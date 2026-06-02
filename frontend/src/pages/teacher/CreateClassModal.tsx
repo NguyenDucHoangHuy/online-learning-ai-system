@@ -1,29 +1,70 @@
-// src/pages/teacher/CreateClassModal.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { X, Globe, User, Folder, Book, Loader2 } from "lucide-react";
-import { useCreateClass } from "../../services/classes/classes.queries";
+import {
+  useCreateClass,
+  useUpdateClass,
+} from "../../services/classes/classes.queries";
+// 🎯 IMPORT STORE ĐỂ LẤY THÔNG TIN GIẢNG VIÊN REALTIME
+import { useAuthStore } from "../../stores/auth.store";
+// 🎯 IMPORT CÁC TYPES CHUẨN ĐÃ ĐỊNH NGHĨA
+import { ClassItem, CreateClassPayload } from "../../types/api/class.types";
 
 interface CreateClassModalProps {
   isOpen: boolean;
   onClose: () => void;
+  editData?: ClassItem | null; // 👈 Thêm prop nhận dữ liệu chỉnh sửa lớp học từ trang cha
 }
 
-const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
+const CreateClassModal = ({
+  isOpen,
+  onClose,
+  editData,
+}: CreateClassModalProps) => {
   const [className, setClassName] = useState("");
   const [classDescription, setClassDescription] = useState("");
   const [tags, setTags] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<string>("book");
   const [error, setError] = useState("");
 
-  // 📡 KẾT NỐI API: Gọi mutation tạo lớp học và bóc tách trạng thái pending ngầm
-  const { mutate: createClass, isPending } = useCreateClass();
+  // 👤 LẤY USER THỰC TẾ ĐỂ KHỬ CỨNG TÊN "HOÀNG HUY"
+  const user = useAuthStore((state) => state.user);
+
+  // 📡 KẾT NỐI API: Gọi mutation tạo lớp học
+  const { mutate: createClass, isPending: isCreatePending } = useCreateClass();
+
+  // 📡 1. KÍCH HOẠT HOOK UPDATE CHÍNH THỨC Ở ĐÂY:
+  const { mutate: updateClass, isPending: isUpdatePending } = useUpdateClass();
+
+  // 🔄 2. ĐỒNG BỘ TRẠNG THÁI LOADING CHO CẢ TẠO VÀ SỬA:
+  const isPending = isCreatePending || isUpdatePending;
+
+  // 🔄 THEO DÕI TRẠNG THÁI MỞ MODAL ĐỂ ĐỔ DỮ LIỆU HOẶC LÀM TRỐNG FORM
+  useEffect(() => {
+    if (isOpen) {
+      setError("");
+      if (editData) {
+        // Nếu có dữ liệu editData => Chuyển sang chế độ CHỈNH SỬA
+        setClassName(editData.name || "");
+        setClassDescription(editData.description || "");
+        // Các trường mở rộng tạm thời reset hoặc map tương ứng nếu hệ thống lưu trữ
+        setTags("");
+        setSelectedAvatar("book");
+      } else {
+        // Nếu không có editData => Chuyển sang chế độ TẠO MỚI hoàn toàn
+        setClassName("");
+        setClassDescription("");
+        setTags("");
+        setSelectedAvatar("book");
+      }
+    }
+  }, [editData, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleCreateClass = (e: React.FormEvent) => {
+  const handleSubmitForm = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -32,34 +73,54 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
       return;
     }
 
-    // 📡 Kích nổ API đẩy dữ liệu xuống Database
-    createClass(
-      {
-        name: className.trim(),
-        description: classDescription.trim() || undefined,
+    if (!classDescription.trim()) {
+      setError("Vui lòng nhập mô tả chi tiết cho môn học");
+      return;
+    }
+
+    // 📡 Thiết lập Payload chuẩn hóa theo đúng cấu trúc CreateClassPayload
+    const payload: CreateClassPayload = {
+      name: className.trim(),
+      description: classDescription.trim() || undefined,
+    };
+
+    const mutationOptions = {
+      onSuccess: () => {
+        // Làm sạch form hoàn toàn trước khi rút lui
+        setClassName("");
+        setClassDescription("");
+        setTags("");
+        setSelectedAvatar("book");
+        onClose();
       },
-      {
-        onSuccess: () => {
-          // Làm sạch form hoàn toàn trước khi rút lui
-          setClassName("");
-          setClassDescription("");
-          setTags("");
-          setSelectedAvatar("book");
-          onClose();
-        },
-        onError: (err: unknown) => {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Đã có lỗi xảy ra khi tạo lớp học.",
-          );
-        },
+      onError: (err: unknown) => {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Đã có lỗi xảy ra. Vui lòng thử lại.",
+        );
       },
-    );
+    };
+
+    if (editData) {
+      // 📡 KÍCH NỔ API CẬP NHẬT (UPDATE) LỚP HỌC THẬT VÀO DB
+      console.log("Kích hoạt API Update lớp học có ID:", editData.id, payload);
+
+      updateClass(
+        {
+          id: editData.id,
+          payload: payload,
+        },
+        mutationOptions,
+      );
+    } else {
+      // 📡 KÍCH NỔ API TẠO MỚI (CREATE) LỚP HỌC
+      createClass(payload, mutationOptions);
+    }
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       {/* Màn che mờ đóng modal khi click ra ngoài */}
       <div
         className="absolute inset-0"
@@ -68,7 +129,7 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
 
       {/* Modal Container */}
       <div
-        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-300 relative z-10"
+        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 relative z-10"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         <style>{`div::-webkit-scrollbar { display: none; }`}</style>
@@ -77,10 +138,12 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
         <div className="flex items-center justify-between p-8 border-b border-slate-50 sticky top-0 bg-white z-10">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
-              Create New Discipline
+              {editData ? "Edit Discipline" : "Create New Discipline"}
             </h2>
             <p className="text-sm text-slate-500 font-medium mt-1">
-              Set up your virtual classroom portfolio
+              {editData
+                ? "Update your current classroom portfolio"
+                : "Set up your virtual classroom portfolio"}
             </p>
           </div>
           <button
@@ -95,9 +158,10 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
         <div className="p-8">
           {/* Instructor Info */}
           <div className="bg-blue-50/50 p-4 rounded-2xl mb-6 text-sm text-blue-800 border border-blue-100 flex items-center gap-3">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
             <span>
-              <strong>Instructor:</strong> Hoàng Huy
+              <strong>Instructor:</strong>{" "}
+              {user?.fullName || "Giảng viên Hệ thống"}
             </span>
           </div>
 
@@ -108,7 +172,23 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
             </div>
           )}
 
-          <form onSubmit={handleCreateClass} className="space-y-6">
+          <form onSubmit={handleSubmitForm} className="space-y-6">
+            {/* THÔNG TIN KHÓA MÃ LỚP CỐ ĐỊNH CHỈ XUẤT HIỆN KHI CHỈNH SỬA */}
+            {editData && (
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                  Class Code (Mã lớp học cố định)
+                </label>
+                <input
+                  type="text"
+                  value={editData.code}
+                  disabled
+                  className="w-full px-5 py-4 bg-slate-100 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-wider text-slate-400 cursor-not-allowed"
+                />
+              </div>
+            )}
+
+            {/* Class Name */}
             <div>
               <Input
                 id="className"
@@ -208,9 +288,10 @@ const CreateClassModal = ({ isOpen, onClose }: CreateClassModalProps) => {
               >
                 {isPending ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" /> WRITING
-                    DATA...
+                    <Loader2 size={16} className="animate-spin" /> SAVING...
                   </>
+                ) : editData ? (
+                  "SAVE CHANGES"
                 ) : (
                   "CREATE DISCIPLINE"
                 )}

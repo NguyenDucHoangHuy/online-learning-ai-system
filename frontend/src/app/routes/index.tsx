@@ -13,6 +13,7 @@ import RegisterPage from "../../pages/auth/RegisterPage";
 import JoinClassPage from "../../pages/student/JoinClassPage";
 import MyLearningPage from "../../pages/student/MyLearningPage";
 import StudyRoomPage from "../../pages/student/StudyRoomPage";
+import WaitingRoomPage from "../../pages/student/WaitingRoomPage";
 import DashboardPage from "../../pages/teacher/DashboardPage";
 import ManageClassesPage from "../../pages/teacher/ManageClassesPage";
 import CreateSessionPage from "../../pages/teacher/CreateSessionPage";
@@ -41,6 +42,7 @@ export const AppRoutes = () => {
       >
         <Route path={ROUTES.STUDENT_JOIN} element={<JoinClassPage />} />
         <Route path={ROUTES.STUDENT.HISTORY} element={<MyLearningPage />} />
+        <Route path={ROUTES.STUDENT.WAITING} element={<WaitingRoomPage />} />
         <Route path={ROUTES.STUDY_ROOM} element={<StudyRoomPage />} />
       </Route>
 

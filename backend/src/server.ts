@@ -14,8 +14,13 @@ async function bootstrap() {
     await prisma.$connect();
     console.log("✅ Database connected");
 
-    httpServer.listen(env.PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${env.PORT}`);
+    // httpServer.listen(env.PORT, () => {
+    //   console.log(`🚀 Server running on http://localhost:${env.PORT}`);
+    //   console.log(`📦 Environment: ${env.NODE_ENV}`);
+    // });
+    httpServer.listen(Number(env.PORT), "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${env.PORT}`);
+      console.log(`🌐 LAN URL: http://192.168.1.14:${env.PORT}`);
       console.log(`📦 Environment: ${env.NODE_ENV}`);
     });
   } catch (error) {

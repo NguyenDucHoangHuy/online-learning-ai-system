@@ -52,15 +52,12 @@ export const participantsService = {
     if (existingParticipant) {
       // ✅ Cải thiện UX/API: Ném lỗi Conflict nếu đã được duyệt
       if (existingParticipant.joinStatus === JoinStatus.APPROVED) {
-        throw new AppError(MESSAGES.ALREADY_JOINED, HTTP_STATUS.CONFLICT);
+        return existingParticipant;
       }
 
       // ✅ Tránh spam request nếu đang chờ duyệt
       if (existingParticipant.joinStatus === JoinStatus.PENDING) {
-        throw new AppError(
-          "Your request is already pending approval",
-          HTTP_STATUS.CONFLICT,
-        );
+        return existingParticipant;
       }
 
       // Logic Rejoin: Chỉ chạy nếu trước đó bị REJECTED hoặc đã LEFT

@@ -10,54 +10,100 @@ import {
   Activity,
   Clock,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
 import { ROUTES } from "../../constants";
+// 🎯 Import trực tiếp Hook chính chủ của dự án
+import { useTeacherDashboardStats } from "../../services/sessions/sessions.queries";
 
 const DashboardPage = () => {
   const navigate = useNavigate();
 
-  // Dữ liệu thống kê mẫu
+  // 🎯 Gọi Hook chuẩn từ React Query của hệ thống
+  const { data: response, isLoading } = useTeacherDashboardStats();
+
+  // 🎯 Ép kiểu an toàn tuyệt đối qua unknown, định nghĩa cấu trúc rõ ràng không dùng any
+  const serverResponse = response;
+
+  // Trỏ chính xác vào node chứa dữ liệu thật từ DB
+  const dashboardData = serverResponse?.data;
+
+  const dbStats = dashboardData?.stats;
+  const dbRecentSessions = dashboardData?.recentSessions || [];
+
+  // Bản đồ hóa dữ liệu trực tiếp vào giao diện thống kê
   const stats = [
     {
       label: "TOTAL CLASSES",
-      value: "12",
-      change: "+12%",
+      value: String(dbStats?.totalClasses ?? 0),
+      change: "Stable",
       trend: "up",
       icon: <BookOpen className="w-5 h-5 text-blue-600" />,
     },
     {
       label: "TOTAL SESSIONS",
-      value: "48",
-      change: "+5%",
+      value: String(dbStats?.totalSessions ?? 0),
+      change: "Live",
       trend: "up",
       icon: <Activity className="w-5 h-5 text-emerald-600" />,
     },
     {
       label: "AVG. ATTENTION",
-      value: "86%",
-      change: "+8%",
+      value: String(dbStats?.avgAttention ?? "0%"),
+      change: "Realtime",
       trend: "up",
       icon: <TrendingUp className="w-5 h-5 text-blue-500" />,
     },
     {
       label: "QUESTIONS ASKED",
-      value: "142",
-      change: "-2%",
-      trend: "down",
+      value: String(dbStats?.questionsAsked ?? 0),
+      change: "Total",
+      trend: "up",
       icon: <TrendingDown className="w-5 h-5 text-orange-600" />,
     },
   ];
 
-  // Danh sách các buổi học gần đây
-  const recentSessions = [
-    { title: "NEURAL NETWORKS", date: "MAY 6", time: "10:30 AM" },
-    { title: "ETHICS IN BIO-ENG", date: "MAY 6", time: "01:15 PM" },
-    { title: "ADVANCED REACT", date: "MAY 5", time: "09:00 AM" },
-  ];
+  const formatSessionTime = (dateString: string) => {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return { date: "UNKNOWN", time: "--:--" };
+
+    const months = [
+      "JAN",
+      "FEB",
+      "MAR",
+      "APR",
+      "MAY",
+      "JUN",
+      "JUL",
+      "AUG",
+      "SEP",
+      "OCT",
+      "NOV",
+      "DEC",
+    ];
+    return {
+      date: `${months[d.getMonth()]} ${d.getDate()}`,
+      time: d.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
+    };
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 gap-3 text-slate-500">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
+        <p className="font-bold text-sm tracking-wide uppercase">
+          Đang đồng bộ dữ liệu tổng quan...
+        </p>
+      </div>
+    );
+  }
 
   return (
-    // Sử dụng max-w-7xl mx-auto để nội dung luôn căn giữa và không bị bè ngang trên màn hình to
     <div className="max-w-7xl mx-auto">
       {/* HEADER */}
       <header className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-6 mb-10">
@@ -72,7 +118,12 @@ const DashboardPage = () => {
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-full shadow-sm text-sm font-bold text-slate-600">
-            <Clock size={16} className="text-blue-600" /> May 6, 2026
+            <Clock size={16} className="text-blue-600" />{" "}
+            {new Date().toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
           </div>
 
           <div className="flex gap-2">
@@ -98,18 +149,7 @@ const DashboardPage = () => {
               <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-blue-50 transition-colors">
                 {stat.icon}
               </div>
-              <div
-                className={`flex items-center text-[11px] font-bold px-2.5 py-1 rounded-lg ${
-                  stat.trend === "up"
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-rose-50 text-rose-600"
-                }`}
-              >
-                {stat.trend === "up" ? (
-                  <TrendingUp size={12} className="mr-1" />
-                ) : (
-                  <TrendingDown size={12} className="mr-1" />
-                )}
+              <div className="flex items-center text-[10px] uppercase font-extrabold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
                 {stat.change}
               </div>
             </div>
@@ -123,7 +163,7 @@ const DashboardPage = () => {
         ))}
       </div>
 
-      {/* SECTION BIỂU ĐỒ & RECENT SESSIONS */}
+      {/* BIỂU ĐỒ & RECENT SESSIONS */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Biểu đồ */}
         <div className="xl:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 min-h-[400px] flex flex-col justify-between">
@@ -145,7 +185,6 @@ const DashboardPage = () => {
             </button>
           </div>
 
-          {/* Khung Biểu đồ SVG mô phỏng */}
           <div className="flex-1 w-full bg-blue-50/50 rounded-[2rem] border-2 border-dashed border-blue-200 flex items-center justify-center relative overflow-hidden mt-4">
             <div className="absolute inset-0 flex items-end">
               <svg
@@ -174,32 +213,43 @@ const DashboardPage = () => {
           </h3>
 
           <div className="space-y-4 flex-1">
-            {recentSessions.map((session, index) => (
-              <div
-                key={index}
-                className="flex items-center gap-4 p-4 bg-slate-900 hover:bg-blue-600/20 rounded-2xl transition-all cursor-pointer group border border-slate-800"
-                onClick={() => navigate(ROUTES.TEACHER.HISTORY)}
-              >
-                <div className="p-3 bg-slate-800 rounded-xl group-hover:bg-blue-600 transition-colors shadow-sm">
-                  <Clock
-                    size={20}
-                    className="text-blue-400 group-hover:text-white"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-bold truncate uppercase tracking-wide text-slate-100">
-                    {session.title}
-                  </h4>
-                  <p className="text-[10px] text-slate-400 font-bold mt-1 tracking-widest uppercase">
-                    {session.date} • {session.time}
-                  </p>
-                </div>
-                <ChevronRight
-                  size={18}
-                  className="text-slate-500 group-hover:text-white transition-colors flex-shrink-0"
-                />
+            {dbRecentSessions.length === 0 ? (
+              <div className="text-center py-16 text-slate-500 text-sm font-semibold border border-dashed border-slate-800 rounded-2xl uppercase tracking-wider">
+                No recent sessions found
               </div>
-            ))}
+            ) : (
+              dbRecentSessions.map((session) => {
+                const dateTime = formatSessionTime(session.createdAt);
+                return (
+                  <div
+                    key={session.id}
+                    className="flex items-center gap-4 p-4 bg-slate-900 hover:bg-blue-600/20 rounded-2xl transition-all cursor-pointer group border border-slate-800"
+                    onClick={() =>
+                      navigate(`/teacher/sessions/${session.id}/report`)
+                    }
+                  >
+                    <div className="p-3 bg-slate-800 rounded-xl group-hover:bg-blue-600 transition-colors shadow-sm">
+                      <Clock
+                        size={20}
+                        className="text-blue-400 group-hover:text-white"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-bold truncate uppercase tracking-wide text-slate-100">
+                        {session.title}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1 tracking-widest uppercase">
+                        {dateTime.date} • {dateTime.time}
+                      </p>
+                    </div>
+                    <ChevronRight
+                      size={18}
+                      className="text-slate-500 group-hover:text-white transition-colors flex-shrink-0"
+                    />
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <button
