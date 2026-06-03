@@ -43,6 +43,13 @@ export const socketEmitter = {
   emitChatSend: (socket: Socket, sessionId: string, message: string) => {
     socket.emit(SOCKET_EVENTS.CHAT_SEND, { sessionId, message });
   },
+
+  emitMediaState: (
+    socket: Socket,
+    payload: { sessionId: string; isMuted: boolean; isVideoOff: boolean },
+  ) => {
+    socket.emit(SOCKET_EVENTS.MEDIA_STATE, payload);
+  },
   // ==================== 🛠️ PHÂN KHU WEBRTC SIGNALING EMITTERS ====================
 
   /**

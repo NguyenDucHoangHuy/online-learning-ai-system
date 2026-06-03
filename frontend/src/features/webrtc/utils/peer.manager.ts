@@ -5,6 +5,10 @@ import { socketEmitter } from "../../../socket/socket.emitter";
 export class PeerManager {
   private peerConnections = new Map<string, RTCPeerConnection>();
   private peerTargetRoles = new Map<string, "TEACHER" | "STUDENT">();
+  private peerSenders = new Map<
+    string,
+    { audio?: RTCRtpSender; video?: RTCRtpSender }
+  >();
 
   // 🎯 FIX VẤN ĐỀ 3: Kho lưu trữ hàng đợi ứng viên mạng đập tan lỗi ICE đè trước Offer
   private iceQueues = new Map<string, RTCIceCandidateInit[]>();
@@ -12,7 +16,6 @@ export class PeerManager {
   private socket: Socket;
   private sessionId: string;
   private currentUserId: string;
-  private currentUserRole: "TEACHER" | "STUDENT";
 
   // 🎯 FIX VẤN ĐỀ 1: Cho phép khởi tạo rỗng, nạp động qua tiến trình bất đồng bộ sau đó
   private localStream: MediaStream | null = null;
@@ -22,13 +25,12 @@ export class PeerManager {
     socket: Socket,
     sessionId: string,
     currentUserId: string,
-    currentUserRole: "TEACHER" | "STUDENT",
+    _currentUserRole: "TEACHER" | "STUDENT",
     onTrackCallback: (targetUserId: string, stream: MediaStream) => void,
   ) {
     this.socket = socket;
     this.sessionId = sessionId;
     this.currentUserId = currentUserId;
-    this.currentUserRole = currentUserRole;
     this.onTrackCallback = onTrackCallback;
   }
 
@@ -51,7 +53,7 @@ export class PeerManager {
     const existingPc = this.peerConnections.get(targetUserId);
     if (existingPc) {
       this.peerTargetRoles.set(targetUserId, targetUserRole);
-      this.syncLocalTracks(targetUserRole, existingPc);
+      this.syncLocalTracks(targetUserId, targetUserRole, existingPc);
       return existingPc;
     }
 
@@ -60,7 +62,7 @@ export class PeerManager {
     });
 
     this.peerTargetRoles.set(targetUserId, targetUserRole);
-    this.syncLocalTracks(targetUserRole, pc);
+    this.syncLocalTracks(targetUserId, targetUserRole, pc);
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -82,38 +84,39 @@ export class PeerManager {
   }
 
   private syncLocalTracks(
-    targetUserRole: "TEACHER" | "STUDENT",
+    targetUserId: string,
+    _targetUserRole: "TEACHER" | "STUDENT",
     pc: RTCPeerConnection,
   ) {
     if (!this.localStream) return;
 
-    const shouldSendVideo =
-      this.currentUserRole === "TEACHER" || targetUserRole === "TEACHER";
-
     const audioTrack = this.localStream.getAudioTracks()[0] ?? null;
-    const videoTrack = shouldSendVideo
-      ? (this.localStream.getVideoTracks()[0] ?? null)
-      : null;
+    const videoTrack = this.localStream.getVideoTracks()[0] ?? null;
 
     const senders = pc.getSenders();
-    const audioSender = senders.find(
-      (sender) => sender.track?.kind === "audio",
-    );
-    const videoSender = senders.find(
-      (sender) => sender.track?.kind === "video",
-    );
+    const senderState = this.peerSenders.get(targetUserId) ?? {};
+    const audioSender =
+      senderState.audio ??
+      senders.find((sender) => sender.track?.kind === "audio");
+    const videoSender =
+      senderState.video ??
+      senders.find((sender) => sender.track?.kind === "video");
 
     if (audioSender) {
       void audioSender.replaceTrack(audioTrack);
     } else if (audioTrack) {
-      pc.addTrack(audioTrack, this.localStream);
+      senderState.audio = pc.addTrack(audioTrack, this.localStream);
     }
 
     if (videoSender) {
       void videoSender.replaceTrack(videoTrack);
     } else if (videoTrack) {
-      pc.addTrack(videoTrack, this.localStream);
+      senderState.video = pc.addTrack(videoTrack, this.localStream);
     }
+
+    if (audioSender) senderState.audio = audioSender;
+    if (videoSender) senderState.video = videoSender;
+    this.peerSenders.set(targetUserId, senderState);
   }
 
   private refreshAllConnections() {
@@ -121,7 +124,7 @@ export class PeerManager {
       const targetUserRole = this.peerTargetRoles.get(targetUserId);
       if (!targetUserRole) return;
 
-      this.syncLocalTracks(targetUserRole, pc);
+      this.syncLocalTracks(targetUserId, targetUserRole, pc);
     });
   }
 
@@ -263,6 +266,7 @@ export class PeerManager {
     }
     this.iceQueues.delete(userId);
     this.peerTargetRoles.delete(userId);
+    this.peerSenders.delete(userId);
   }
 
   public clearAllConnections() {
@@ -270,5 +274,6 @@ export class PeerManager {
     this.peerConnections.clear();
     this.iceQueues.clear();
     this.peerTargetRoles.clear();
+    this.peerSenders.clear();
   }
 }

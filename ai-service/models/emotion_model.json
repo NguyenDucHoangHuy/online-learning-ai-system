@@ -1,0 +1,13 @@
+{
+  "classes": [
+    "angry",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "input_size": [
+    48,
+    48
+  ]
+}

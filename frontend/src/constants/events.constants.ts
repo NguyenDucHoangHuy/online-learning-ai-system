@@ -9,6 +9,7 @@ export const SOCKET_EVENTS = {
   SESSION_JOIN: "session:join",
   SESSION_LEAVE: "session:leave",
   SESSION_ENDED: "session:ended",
+  MEDIA_STATE: "media:state",
 
   // Luồng Phê duyệt Phòng chờ (HTTP tác động -> Socket phát tín hiệu Real-time)
   PARTICIPANT_JOINED: "participant:joined",

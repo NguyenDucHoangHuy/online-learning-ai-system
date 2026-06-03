@@ -49,6 +49,7 @@ app.use("/api", participantsRoutes);
 
 // thêm routes mới
 app.use("/api/chat", chatRoutes);
+app.use("/api", chatRoutes);
 
 app.use("/api/emotions", emotionRoutes);
 

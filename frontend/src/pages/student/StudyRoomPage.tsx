@@ -195,6 +195,7 @@ export default function StudyRoomPage() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const isLocalMediaReady = !!localStream;
 
   const [countdownText, setCountdownText] = useState(
     "Thời gian còn lại: --:--:--",
@@ -229,6 +230,9 @@ export default function StudyRoomPage() {
 
   // 🎯 BỘ ĐỒNG BỘ THỜI GIAN THỰC PHẦN CỨNG ĐẦU XA PHÍA HỌC SINH
   const [remoteHardwareStates, setRemoteHardwareStates] = useState<
+    Record<string, { isMuted: boolean; isVideoOff: boolean }>
+  >({});
+  const [remoteMediaStates, setRemoteMediaStates] = useState<
     Record<string, { isMuted: boolean; isVideoOff: boolean }>
   >({});
 
@@ -278,6 +282,30 @@ export default function StudyRoomPage() {
 
   // Vòng đời Cam/Mic
   useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleMediaState = (payload: {
+      userId: string;
+      isMuted: boolean;
+      isVideoOff: boolean;
+    }) => {
+      setRemoteMediaStates((prev) => ({
+        ...prev,
+        [payload.userId]: {
+          isMuted: payload.isMuted,
+          isVideoOff: payload.isVideoOff,
+        },
+      }));
+    };
+
+    socket.on(SOCKET_EVENTS.MEDIA_STATE, handleMediaState);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.MEDIA_STATE, handleMediaState);
+    };
+  }, [socket, isConnected]);
+
+  useEffect(() => {
     let hardwareStream: MediaStream | null = null;
     async function startHardware() {
       try {
@@ -316,7 +344,7 @@ export default function StudyRoomPage() {
         console.error("🚨 Lỗi khi rời khỏi phòng học:", e);
       }
       if (socket && isConnected)
-        socket.emit("leave:room", { sessionId, userId: user?.id });
+        socketEmitter.emitSessionLeave(socket, sessionId);
       navigate(ROUTES.STUDENT_JOIN, { replace: true });
     };
 
@@ -390,7 +418,7 @@ export default function StudyRoomPage() {
           localStreamRef.current.getTracks().forEach((track) => track.stop());
         }
 
-        socket.emit("leave:room", { sessionId, userId: user?.id });
+        socketEmitter.emitSessionLeave(socket, sessionId);
         navigate(ROUTES.STUDENT_JOIN, { replace: true });
       }
     };
@@ -408,7 +436,7 @@ export default function StudyRoomPage() {
       !socket ||
       !isConnected ||
       !sessionId ||
-      !localStream ||
+      !isLocalMediaReady ||
       !user?.id ||
       !sessionData
     )
@@ -444,25 +472,88 @@ export default function StudyRoomPage() {
             );
           }
         });
+
+        socketEmitter.emitMediaState(socket, {
+          sessionId,
+          isMuted,
+          isVideoOff,
+        });
       }
     });
 
     const presenceRoomEvent = `${SOCKET_EVENTS.PARTICIPANT_JOINED}:room`;
-    socket.on(presenceRoomEvent, (payload: PresencePayload) => {
-      console.log(
-        "📥 [Radar Student] Nhận tín hiệu thời gian thực có người khác vừa vào phòng:",
-        payload,
+    const handleIncomingParticipant = (payload: PresencePayload) => {
+      if (payload.userId === user.id) return;
+
+      const peerRole =
+        payload.userId === sessionData.class?.teacherId ||
+        payload.role?.toUpperCase() === "TEACHER"
+          ? "TEACHER"
+          : "STUDENT";
+
+      setOnlineParticipants((prev) => {
+        if (
+          prev.some(
+            (p) =>
+              p.studentId === payload.userId ||
+              p.id === payload.userId ||
+              p.student?.id === payload.userId,
+          )
+        ) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            id: payload.userId,
+            sessionId,
+            studentId: payload.userId,
+            role: peerRole,
+            joinStatus: "APPROVED" as const,
+            attemptNumber: 1,
+            joinedAt: payload.joinedAt || new Date().toISOString(),
+            leftAt: null,
+            student: {
+              id: payload.userId,
+              fullName: payload.fullName,
+              email: "",
+            },
+          } as UIParticipantItem,
+        ];
+      });
+
+      initiateCall(payload.userId, peerRole);
+    };
+
+    const handleLeavingParticipant = (payload: { userId: string }) => {
+      setOnlineParticipants((prev) =>
+        prev.filter(
+          (p) =>
+            p.studentId !== payload.userId &&
+            p.id !== payload.userId &&
+            p.student?.id !== payload.userId,
+        ),
       );
-    });
+      setRemoteMediaStates((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
+    };
+
+    socket.on(presenceRoomEvent, handleIncomingParticipant);
+    socket.on(SOCKET_EVENTS.PARTICIPANT_LEFT, handleLeavingParticipant);
 
     return () => {
-      socket.off(presenceRoomEvent);
+      socket.off(presenceRoomEvent, handleIncomingParticipant);
+      socket.off(SOCKET_EVENTS.PARTICIPANT_LEFT, handleLeavingParticipant);
     };
   }, [
     socket,
     isConnected,
     sessionId,
-    localStream,
+    isLocalMediaReady,
     user?.id,
     sessionData,
     initiateCall,
@@ -473,19 +564,55 @@ export default function StudyRoomPage() {
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+        const nextMuted = !audioTrack.enabled;
+        setIsMuted(nextMuted);
         setLocalStream(new MediaStream(localStream.getTracks()));
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted: nextMuted,
+            isVideoOff,
+          });
+        }
       }
     }
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
     if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
-        setLocalStream(new MediaStream(localStream.getTracks()));
+      if (!isVideoOff) {
+        localStream.getVideoTracks().forEach((track) => track.stop());
+        setIsVideoOff(true);
+        setLocalStream(new MediaStream(localStream.getAudioTracks()));
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted,
+            isVideoOff: true,
+          });
+        }
+        return;
+      }
+
+      try {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+        const [videoTrack] = cameraStream.getVideoTracks();
+        setIsVideoOff(false);
+        setLocalStream(
+          new MediaStream([...localStream.getAudioTracks(), videoTrack]),
+        );
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted,
+            isVideoOff: false,
+          });
+        }
+      } catch (error) {
+        console.error("Không thể bật lại camera:", error);
       }
     }
   };
@@ -506,7 +633,7 @@ export default function StudyRoomPage() {
     {
       if (localStream) localStream.getTracks().forEach((track) => track.stop());
       if (socket && isConnected)
-        socket.emit("leave:room", { sessionId, userId: user?.id });
+        socketEmitter.emitSessionLeave(socket, sessionId);
       setIsLeaving(false);
       navigate(ROUTES.STUDENT_JOIN, { replace: true });
     }
@@ -583,9 +710,13 @@ export default function StudyRoomPage() {
 
   // 🎯 ĐỒNG BỘ: Chuyển sang đọc trạng thái bẫy từ bộ Map Poller nội bộ Wi-Fi LAN
   const isTeacherMuted =
-    remoteHardwareStates[sessionData.class.teacherId]?.isMuted ?? true;
+    remoteMediaStates[sessionData.class.teacherId]?.isMuted ??
+    remoteHardwareStates[sessionData.class.teacherId]?.isMuted ??
+    true;
   const isTeacherVideoOff =
-    remoteHardwareStates[sessionData.class.teacherId]?.isVideoOff ?? true;
+    remoteMediaStates[sessionData.class.teacherId]?.isVideoOff ??
+    remoteHardwareStates[sessionData.class.teacherId]?.isVideoOff ??
+    true;
 
   return (
     <div className="h-screen bg-slate-950 text-white flex font-sans overflow-hidden">
@@ -683,10 +814,14 @@ export default function StudyRoomPage() {
                         item={p}
                         stream={companionStream}
                         isMuted={
-                          remoteHardwareStates[p.studentId]?.isMuted ?? true
+                          remoteMediaStates[p.studentId]?.isMuted ??
+                          remoteHardwareStates[p.studentId]?.isMuted ??
+                          true
                         }
                         isVideoOff={
-                          remoteHardwareStates[p.studentId]?.isVideoOff ?? true
+                          remoteMediaStates[p.studentId]?.isVideoOff ??
+                          remoteHardwareStates[p.studentId]?.isVideoOff ??
+                          true
                         }
                       />
                     </div>
@@ -790,9 +925,15 @@ export default function StudyRoomPage() {
                     key={p.id}
                     item={p}
                     stream={companionStream}
-                    isMuted={remoteHardwareStates[p.studentId]?.isMuted ?? true}
+                    isMuted={
+                      remoteMediaStates[p.studentId]?.isMuted ??
+                      remoteHardwareStates[p.studentId]?.isMuted ??
+                      true
+                    }
                     isVideoOff={
-                      remoteHardwareStates[p.studentId]?.isVideoOff ?? true
+                      remoteMediaStates[p.studentId]?.isVideoOff ??
+                      remoteHardwareStates[p.studentId]?.isVideoOff ??
+                      true
                     }
                   />
                 );

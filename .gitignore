@@ -26,6 +26,11 @@ __pycache__/
 ai-service/.venv/
 *.egg-info/
 ai-service/__pycache__/
+ai-service/data/
+ai-service/models/*.joblib
+ai-service/models/*.pkl
+ai-service/models/*.keras
+ai-service/models/*.h5
 
 # ==================== DOCKER ====================
 *.log

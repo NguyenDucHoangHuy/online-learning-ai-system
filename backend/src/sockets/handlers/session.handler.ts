@@ -139,4 +139,22 @@ export const registerSessionHandlers = (
       }
     },
   );
+
+  socket.on(
+    SOCKET_EVENTS.MEDIA_STATE,
+    (data: { sessionId: string; isMuted: boolean; isVideoOff: boolean }) => {
+      const { sessionId, isMuted, isVideoOff } = data;
+      const roomName = `session:${sessionId}`;
+
+      if (!socket.rooms.has(roomName)) return;
+
+      socket.to(roomName).emit(SOCKET_EVENTS.MEDIA_STATE, {
+        userId,
+        role,
+        isMuted,
+        isVideoOff,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+  );
 };

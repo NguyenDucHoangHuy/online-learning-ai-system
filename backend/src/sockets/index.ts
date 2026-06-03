@@ -22,6 +22,18 @@ export const registerSocketHandlers = (io: CustomServer) => {
     registerSessionHandlers(io, socket);
     registerWebRTCHandlers(io, socket);
 
+    socket.on("disconnecting", () => {
+      socket.rooms.forEach((roomName) => {
+        if (!roomName.startsWith("session:")) return;
+
+        socket.to(roomName).emit(SOCKET_EVENTS.PARTICIPANT_LEFT, {
+          userId: id,
+          role,
+          leftAt: new Date().toISOString(),
+        });
+      });
+    });
+
     socket.on("disconnect", () => {
       console.log(`🔌 Disconnected: ${id} — socketId: ${socket.id}`);
       // Socket.IO tự xóa socket khỏi tất cả rooms khi disconnect

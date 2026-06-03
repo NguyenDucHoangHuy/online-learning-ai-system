@@ -3,3 +3,9 @@ flask
 flask-cors
 opencv-python
 numpy
+mediapipe
+pandas
+scikit-learn
+joblib
+kaggle
+tf-keras

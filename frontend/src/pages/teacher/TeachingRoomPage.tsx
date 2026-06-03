@@ -25,7 +25,10 @@ import {
   useSessionDetail,
   useEndSession,
 } from "../../services/sessions/sessions.queries";
-import { aiService } from "../../services/ai/ai.service";
+import {
+  aiService,
+  StudentAttentionAnalysis,
+} from "../../services/ai/ai.service";
 import { ROUTES } from "../../constants";
 import { useSocket } from "../../socket/socket.client";
 import { SOCKET_EVENTS } from "../../constants/events.constants";
@@ -59,6 +62,10 @@ interface ExpectedSessionData {
 interface LeaveToastState {
   id: string;
   message: string;
+}
+
+interface StudentAiState extends StudentAttentionAnalysis {
+  updatedAt: string;
 }
 
 export default function TeachingRoomPage() {
@@ -97,19 +104,13 @@ export default function TeachingRoomPage() {
   >([]);
   const [pendingStudents, setPendingStudents] = useState<ParticipantItem[]>([]);
 
-  const [emotionStatus, setEmotionStatus] = useState<
-    "focused" | "normal" | "distracted"
-  >("normal");
-  const [emotionName, setEmotionName] = useState("neutral");
-  const isAnalyzingRef = useRef(false);
-
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const isLocalMediaReady = !!localStream;
 
-  const { remoteStreams } = useWebRTCSignaling({
+  const { remoteStreams, initiateCall } = useWebRTCSignaling({
     socket,
     isConnected,
     sessionId,
@@ -122,6 +123,13 @@ export default function TeachingRoomPage() {
   const [remoteHardwareStates, setRemoteHardwareStates] = useState<
     Record<string, { isMuted: boolean; isVideoOff: boolean }>
   >({});
+  const [remoteMediaStates, setRemoteMediaStates] = useState<
+    Record<string, { isMuted: boolean; isVideoOff: boolean }>
+  >({});
+  const [studentAiStates, setStudentAiStates] = useState<
+    Record<string, StudentAiState>
+  >({});
+  const studentAnalysisBusyRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const checkTracks = () => {
@@ -167,7 +175,117 @@ export default function TeachingRoomPage() {
     return () => clearInterval(interval);
   }, [remoteStreams]);
 
+  useEffect(() => {
+    const analyzerTimers: number[] = [];
+    const analyzerVideos: HTMLVideoElement[] = [];
+
+    const captureAndAnalyzeStudent = async (
+      studentId: string,
+      stream: MediaStream,
+    ) => {
+      if (studentAnalysisBusyRef.current.has(studentId)) return;
+
+      const video = document.createElement("video");
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      analyzerVideos.push(video);
+
+      void video.play().catch((error) => {
+        console.warn("Student AI analyzer is waiting for video frames:", error);
+      });
+
+      const analyze = async () => {
+        if (
+          studentAnalysisBusyRef.current.has(studentId) ||
+          video.videoWidth === 0 ||
+          video.videoHeight === 0
+        ) {
+          return;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 224;
+        canvas.height = 168;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const image = canvas.toDataURL("image/jpeg", 0.55);
+
+        try {
+          studentAnalysisBusyRef.current.add(studentId);
+          const result = await aiService.analyzeStudentFrame({
+            image,
+            studentId,
+            sessionId,
+          });
+          setStudentAiStates((prev) => ({
+            ...prev,
+            [studentId]: { ...result, updatedAt: new Date().toISOString() },
+          }));
+        } catch (error) {
+          console.warn("Không thể phân tích AI sinh viên:", error);
+        } finally {
+          studentAnalysisBusyRef.current.delete(studentId);
+        }
+      };
+
+      void analyze();
+      analyzerTimers.push(window.setInterval(analyze, 10000));
+    };
+
+    onlineParticipants.forEach((participant) => {
+      const studentId = participant.studentId;
+      const stream = remoteStreams[studentId];
+      const isStudentVideoOff =
+        remoteMediaStates[studentId]?.isVideoOff ??
+        (stream?.getVideoTracks().length ?? 0) === 0;
+
+      if (!stream || isStudentVideoOff) return;
+      void captureAndAnalyzeStudent(studentId, stream);
+    });
+
+    return () => {
+      analyzerTimers.forEach((timer) => window.clearInterval(timer));
+      analyzerVideos.forEach((video) => {
+        video.pause();
+        video.srcObject = null;
+      });
+    };
+  }, [
+    onlineParticipants,
+    remoteStreams,
+    remoteMediaStates,
+    sessionId,
+  ]);
+
   // REST Nạp danh sách chờ duyệt
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleMediaState = (payload: {
+      userId: string;
+      isMuted: boolean;
+      isVideoOff: boolean;
+    }) => {
+      setRemoteMediaStates((prev) => ({
+        ...prev,
+        [payload.userId]: {
+          isMuted: payload.isMuted,
+          isVideoOff: payload.isVideoOff,
+        },
+      }));
+    };
+
+    socket.on(SOCKET_EVENTS.MEDIA_STATE, handleMediaState);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.MEDIA_STATE, handleMediaState);
+    };
+  }, [socket, isConnected]);
+
   const { data: rawPendingData } = useQuery<ParticipantItem[]>({
     queryKey: ["session-participants-pending", sessionId],
     queryFn: async () => {
@@ -238,7 +356,7 @@ export default function TeachingRoomPage() {
       }
 
       if (socket && isConnected) {
-        socket.emit("leave:room", { sessionId, userId: user?.id });
+        socketEmitter.emitSessionLeave(socket, sessionId);
       }
       navigate(ROUTES.TEACHER_DASHBOARD, { replace: true });
     };
@@ -284,9 +402,16 @@ export default function TeachingRoomPage() {
     localStreamRef.current = localStream;
   }, [localStream]);
 
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = isVideoOff ? null : localStream;
+    }
+  }, [localStream, isVideoOff]);
+
   // Luồng kết nối danh Snapshot và Socket Real-time
   useEffect(() => {
-    if (!socket || !isConnected || !sessionId || !user?.id) return;
+    if (!socket || !isConnected || !sessionId || !user?.id || !isLocalMediaReady)
+      return;
 
     console.log(
       "👨‍🏫 [Presence Engine] Kích hoạt kết nối và gắp Snapshot phòng học...",
@@ -347,6 +472,16 @@ export default function TeachingRoomPage() {
             }));
 
           setOnlineParticipants(activeList as ParticipantItem[]);
+
+          activeList.forEach((participant) => {
+            initiateCall(participant.studentId, "STUDENT");
+          });
+
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted,
+            isVideoOff,
+          });
         } catch (err) {
           console.error("🚨 [Radar Teacher ERROR] Đối chiếu thất bại:", err);
         }
@@ -357,6 +492,9 @@ export default function TeachingRoomPage() {
 
     const handleIncomingParticipant = (payload: PresencePayload) => {
       if (payload.userId === user.id) return;
+      if (payload.role === "STUDENT") {
+        initiateCall(payload.userId, "STUDENT");
+      }
 
       setOnlineParticipants((prev) => {
         if (
@@ -438,6 +576,16 @@ export default function TeachingRoomPage() {
             p.studentId !== payload.userId && p.student?.id !== payload.userId,
         ),
       );
+      setRemoteMediaStates((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
+      setStudentAiStates((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
     };
 
     socket.on(SOCKET_EVENTS.PARTICIPANT_LEFT, handleLeavingParticipant);
@@ -447,63 +595,74 @@ export default function TeachingRoomPage() {
       socket.off(presenceRoomEvent, handleIncomingParticipant);
       socket.off(SOCKET_EVENTS.PARTICIPANT_LEFT, handleLeavingParticipant);
     };
-  }, [socket, isConnected, sessionId, user?.id]);
-
-  const captureFrameAndAnalyze = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (
-      !video ||
-      !canvas ||
-      video.paused ||
-      video.ended ||
-      isAnalyzingRef.current
-    )
-      return;
-    const ctx = canvas.getContext("2d");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = canvas.toDataURL("image/jpeg", 0.6);
-    try {
-      isAnalyzingRef.current = true;
-      const data = await aiService.detectEmotion(imageData);
-      if (data) {
-        setEmotionStatus(data.status || "focused");
-        setEmotionName(data.emotion || "neutral");
-      }
-    } catch (error) {
-      console.warn(error);
-    } finally {
-      isAnalyzingRef.current = false;
-    }
-  };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      captureFrameAndAnalyze();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [
+    socket,
+    isConnected,
+    sessionId,
+    user?.id,
+    isLocalMediaReady,
+    initiateCall,
+  ]);
 
   const toggleMic = () => {
     if (localStream) {
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+        const nextMuted = !audioTrack.enabled;
+        setIsMuted(nextMuted);
         setLocalStream(new MediaStream(localStream.getTracks()));
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted: nextMuted,
+            isVideoOff,
+          });
+        }
       }
     }
   };
 
-  const toggleVideo = () => {
+  const toggleVideo = async () => {
     if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
-        setLocalStream(new MediaStream(localStream.getTracks()));
+      if (!isVideoOff) {
+        localStream.getVideoTracks().forEach((track) => track.stop());
+        const nextStream = new MediaStream(localStream.getAudioTracks());
+        setIsVideoOff(true);
+        setLocalStream(nextStream);
+        if (videoRef.current) videoRef.current.srcObject = null;
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted,
+            isVideoOff: true,
+          });
+        }
+        return;
+      }
+
+      try {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+        const [videoTrack] = cameraStream.getVideoTracks();
+        const nextStream = new MediaStream([
+          ...localStream.getAudioTracks(),
+          videoTrack,
+        ]);
+        setIsVideoOff(false);
+        setLocalStream(nextStream);
+        if (videoRef.current) videoRef.current.srcObject = nextStream;
+        if (socket && isConnected) {
+          socketEmitter.emitMediaState(socket, {
+            sessionId,
+            isMuted,
+            isVideoOff: false,
+          });
+        }
+      } catch (error) {
+        console.error("Không thể bật lại camera:", error);
       }
     }
   };
@@ -567,6 +726,30 @@ export default function TeachingRoomPage() {
     );
   }
 
+  const isStudentCameraOff = (studentId: string) =>
+    remoteMediaStates[studentId]?.isVideoOff ??
+    remoteHardwareStates[studentId]?.isVideoOff ??
+    (remoteStreams[studentId]?.getVideoTracks().length ?? 0) === 0;
+  const focusedStudentCount = onlineParticipants.filter((participant) => {
+    if (isStudentCameraOff(participant.studentId)) return false;
+    return studentAiStates[participant.studentId]?.status === "focused";
+  }).length;
+  const unfocusedStudentCount = onlineParticipants.filter((participant) => {
+    if (isStudentCameraOff(participant.studentId)) return false;
+    return studentAiStates[participant.studentId]?.status === "unfocused";
+  }).length;
+  const absentStudentCount = onlineParticipants.filter((participant) => {
+    if (isStudentCameraOff(participant.studentId)) return false;
+    return studentAiStates[participant.studentId]?.presence === "absent";
+  }).length;
+  const cameraOffStudentCount = onlineParticipants.filter((participant) =>
+    isStudentCameraOff(participant.studentId),
+  ).length;
+  const aiSummaryText =
+    onlineParticipants.length === 0
+      ? "Chờ sinh viên"
+      : `${focusedStudentCount} tập trung • ${unfocusedStudentCount} không tập trung • ${absentStudentCount} vắng mặt • ${cameraOffStudentCount} tắt camera`;
+
   return (
     <div className="h-screen bg-slate-950 text-white flex font-sans overflow-hidden">
       <div className="flex-1 flex flex-col h-full transition-all duration-300 ease-in-out">
@@ -586,10 +769,10 @@ export default function TeachingRoomPage() {
           <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-white/5 text-right shadow-2xl flex items-center gap-4">
             <div>
               <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mb-0.5">
-                AI Teacher State
+                AI Sinh viên
               </p>
               <p className="text-emerald-400 font-black text-xs uppercase tracking-wider">
-                {emotionName} ({emotionStatus})
+                {aiSummaryText}
               </p>
             </div>
           </div>
@@ -633,12 +816,17 @@ export default function TeachingRoomPage() {
           {/* Ô DANH SÁCH HỌC VIÊN ĐỘNG */}
           {onlineParticipants.map((item) => {
             const studentStream = remoteStreams[item.studentId];
+            const aiState = studentAiStates[item.studentId];
 
             // 🎯 ĐỒNG BỘ CHUẨN LAN: Đọc trạng thái bẫy ra từ State Map Poller vãng lai
             const isStudentMuted =
-              remoteHardwareStates[item.studentId]?.isMuted ?? true;
+              remoteMediaStates[item.studentId]?.isMuted ??
+              remoteHardwareStates[item.studentId]?.isMuted ??
+              true;
             const isStudentVideoOff =
-              remoteHardwareStates[item.studentId]?.isVideoOff ?? true;
+              remoteMediaStates[item.studentId]?.isVideoOff ??
+              remoteHardwareStates[item.studentId]?.isVideoOff ??
+              true;
 
             return (
               <VideoTile
@@ -646,8 +834,19 @@ export default function TeachingRoomPage() {
                 name={item.student?.fullName || "Sinh viên"}
                 // Nếu học sinh gạt tắt cam hoàn toàn -> Truyền undefined để dập khung đen, tự đổ Avatar Placeholder tức thì!
                 stream={isStudentVideoOff ? undefined : studentStream}
-                attentionStatus="focused"
+                attentionStatus={
+                  aiState?.status === "unfocused" || aiState?.presence === "absent"
+                    ? "distracted"
+                    : aiState?.status === "focused"
+                      ? "focused"
+                      : "normal"
+                }
                 isMuted={isStudentMuted}
+                isVideoOff={isStudentVideoOff}
+                aiPresence={aiState?.presence}
+                aiAttentionLabel={aiState?.attentionLabel}
+                aiEmotionLabel={aiState?.emotionLabel}
+                aiConfidence={aiState?.confidence}
               />
             );
           })}
@@ -839,8 +1038,6 @@ export default function TeachingRoomPage() {
           </div>
         ))}
       </div>
-
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
