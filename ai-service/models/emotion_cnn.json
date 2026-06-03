@@ -1,0 +1,17 @@
+{
+  "classes": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "input_size": [
+    48,
+    48
+  ],
+  "color_mode": "grayscale",
+  "model_type": "cnn"
+}

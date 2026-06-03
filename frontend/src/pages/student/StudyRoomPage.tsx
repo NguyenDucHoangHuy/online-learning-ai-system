@@ -28,6 +28,7 @@ import { ParticipantItem } from "../../types/api/participant.types";
 import { ROUTES } from "../../constants";
 import { api } from "../../lib/axios";
 import { useRoomChat } from "../../features/chat/hooks/useRoomChat";
+import { aiService } from "../../services/ai/ai.service";
 
 interface PresencePayload {
   userId: string;
@@ -117,12 +118,23 @@ function RemoteStudentTile({
   const isSpeaking = useAudioActivity(stream);
   const fullName = item.student?.fullName || "Sinh viên";
   const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
+    if (audioRef.current) {
+      audioRef.current.srcObject = stream || null;
+      if (stream && !isMuted) {
+        void audioRef.current.play().catch(() => undefined);
+      }
     }
-  }, [stream]);
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream || null;
+      if (stream && !isVideoOff) {
+        void videoRef.current.play().catch(() => undefined);
+      }
+    }
+  }, [stream, isMuted, isVideoOff]);
 
   return (
     <div
@@ -132,9 +144,20 @@ function RemoteStudentTile({
           : "hover:border-white/10"
       }`}
     >
-      <audio ref={audioRef} autoPlay className="hidden" />
+      <audio ref={audioRef} autoPlay muted={isMuted} className="hidden" />
+      {stream && (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className={`absolute inset-0 h-full w-full object-cover scale-x-[-1] ${
+            isVideoOff ? "opacity-0 pointer-events-none" : ""
+          }`}
+        />
+      )}
 
-      {isVideoOff ? (
+      {!stream || isVideoOff ? (
         <div className="flex flex-col items-center gap-3 text-center px-4">
           <div className="w-14 h-14 rounded-full flex items-center justify-center text-sm font-black bg-slate-800 text-slate-300 border border-white/5">
             {fullName.charAt(0).toUpperCase()}
@@ -144,7 +167,7 @@ function RemoteStudentTile({
           </span>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3">
+        <div className="hidden">
           <div
             className={`w-14 h-14 rounded-full flex items-center justify-center text-sm font-black transition-all duration-300 ${
               isSpeaking && !isMuted
@@ -388,6 +411,71 @@ export default function StudyRoomPage() {
     localStreamRef.current = localStream;
   }, [localStream]);
 
+  const mediaStateRef = useRef({ isMuted, isVideoOff });
+  useEffect(() => {
+    mediaStateRef.current = { isMuted, isVideoOff };
+  }, [isMuted, isVideoOff]);
+
+  const aiAnalysisBusyRef = useRef(false);
+  useEffect(() => {
+    if (!localStream || isVideoOff || !sessionId || !sessionData) return;
+
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (!videoTrack || videoTrack.readyState === "ended") return;
+
+    const analyzerVideo = document.createElement("video");
+    analyzerVideo.autoplay = true;
+    analyzerVideo.muted = true;
+    analyzerVideo.playsInline = true;
+    analyzerVideo.srcObject = localStream;
+
+    void analyzerVideo.play().catch((error) => {
+      console.warn("Student AI analyzer is waiting for webcam frames:", error);
+    });
+
+    const analyzeLocalFrame = async () => {
+      if (
+        aiAnalysisBusyRef.current ||
+        analyzerVideo.videoWidth === 0 ||
+        analyzerVideo.videoHeight === 0 ||
+        mediaStateRef.current.isVideoOff
+      ) {
+        return;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 224;
+      canvas.height = 168;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      context.drawImage(analyzerVideo, 0, 0, canvas.width, canvas.height);
+      const image = canvas.toDataURL("image/jpeg", 0.55);
+
+      try {
+        aiAnalysisBusyRef.current = true;
+        await aiService.analyzeStudentFrameViaBackend({
+          sessionId,
+          image,
+        });
+      } catch (error) {
+        console.warn("Không thể gửi frame AI học sinh:", error);
+      } finally {
+        aiAnalysisBusyRef.current = false;
+      }
+    };
+
+    const startTimer = window.setTimeout(analyzeLocalFrame, 1200);
+    const interval = window.setInterval(analyzeLocalFrame, 10000);
+
+    return () => {
+      window.clearTimeout(startTimer);
+      window.clearInterval(interval);
+      analyzerVideo.pause();
+      analyzerVideo.srcObject = null;
+    };
+  }, [localStream, isVideoOff, sessionId, sessionData]);
+
   // Luồng đón tín hiệu giải tán phòng
   useEffect(() => {
     if (!socket || !sessionId) return;
@@ -524,6 +612,10 @@ export default function StudyRoomPage() {
       });
 
       initiateCall(payload.userId, peerRole);
+      socketEmitter.emitMediaState(socket, {
+        sessionId,
+        ...mediaStateRef.current,
+      });
     };
 
     const handleLeavingParticipant = (payload: { userId: string }) => {
@@ -711,8 +803,7 @@ export default function StudyRoomPage() {
   // 🎯 ĐỒNG BỘ: Chuyển sang đọc trạng thái bẫy từ bộ Map Poller nội bộ Wi-Fi LAN
   const isTeacherMuted =
     remoteMediaStates[sessionData.class.teacherId]?.isMuted ??
-    remoteHardwareStates[sessionData.class.teacherId]?.isMuted ??
-    true;
+    (teacherStream ? false : remoteHardwareStates[sessionData.class.teacherId]?.isMuted ?? true);
   const isTeacherVideoOff =
     remoteMediaStates[sessionData.class.teacherId]?.isVideoOff ??
     remoteHardwareStates[sessionData.class.teacherId]?.isVideoOff ??
@@ -748,12 +839,23 @@ export default function StudyRoomPage() {
 
               <div className="h-40 flex gap-4 overflow-x-auto overflow-y-hidden pb-2 snap-x">
                 <div className="w-64 flex-shrink-0 snap-start bg-slate-900 rounded-2xl overflow-hidden relative border border-white/5 flex items-center justify-center">
+                  {teacherStream && (
+                    <audio
+                      ref={(el) => {
+                        if (el) el.srcObject = teacherStream;
+                      }}
+                      autoPlay
+                      muted={isTeacherMuted}
+                      className="hidden"
+                    />
+                  )}
                   {teacherStream && !isTeacherVideoOff ? (
                     <video
                       ref={(el) => {
                         if (el) el.srcObject = teacherStream;
                       }}
                       autoPlay
+                      muted
                       playsInline
                       className="w-full h-full object-cover"
                     />
@@ -815,8 +917,9 @@ export default function StudyRoomPage() {
                         stream={companionStream}
                         isMuted={
                           remoteMediaStates[p.studentId]?.isMuted ??
-                          remoteHardwareStates[p.studentId]?.isMuted ??
-                          true
+                          (companionStream
+                            ? false
+                            : remoteHardwareStates[p.studentId]?.isMuted ?? true)
                         }
                         isVideoOff={
                           remoteMediaStates[p.studentId]?.isVideoOff ??
@@ -833,12 +936,23 @@ export default function StudyRoomPage() {
             <div className="flex-1 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
               {/* Ô 1: WEBCAM GIẢNG VIÊN */}
               <div className="bg-slate-900 rounded-[2rem] border border-white/5 overflow-hidden h-64 relative shadow-md flex items-center justify-center">
+                {teacherStream && (
+                  <audio
+                    ref={(el) => {
+                      if (el) el.srcObject = teacherStream;
+                    }}
+                    autoPlay
+                    muted={isTeacherMuted}
+                    className="hidden"
+                  />
+                )}
                 {teacherStream && !isTeacherVideoOff ? (
                   <video
                     ref={(el) => {
                       if (el) el.srcObject = teacherStream;
                     }}
                     autoPlay
+                    muted
                     playsInline
                     className="w-full h-full object-cover"
                   />
@@ -927,8 +1041,9 @@ export default function StudyRoomPage() {
                     stream={companionStream}
                     isMuted={
                       remoteMediaStates[p.studentId]?.isMuted ??
-                      remoteHardwareStates[p.studentId]?.isMuted ??
-                      true
+                      (companionStream
+                        ? false
+                        : remoteHardwareStates[p.studentId]?.isMuted ?? true)
                     }
                     isVideoOff={
                       remoteMediaStates[p.studentId]?.isVideoOff ??

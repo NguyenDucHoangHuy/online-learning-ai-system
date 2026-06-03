@@ -1,6 +1,8 @@
 {
   "classes": [
     "angry",
+    "disgust",
+    "fear",
     "happy",
     "neutral",
     "sad",
@@ -9,5 +11,6 @@
   "input_size": [
     48,
     48
-  ]
+  ],
+  "feature_kind": "pixels_eq_v2"
 }

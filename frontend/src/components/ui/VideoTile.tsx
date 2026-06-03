@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Brain, Meh, MicOff } from "lucide-react";
 
 interface VideoTileProps {
@@ -27,30 +27,28 @@ export default function VideoTile({
   aiConfidence,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [absentNoticeVisible, setAbsentNoticeVisible] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const isAiAbsent = aiPresence === "absent";
   const shouldShowVideo = !!stream && !isVideoOff;
-  const effectiveAttentionStatus =
-    isAiAbsent && !absentNoticeVisible ? "normal" : attentionStatus;
+  const effectiveAttentionStatus = isAiAbsent ? "distracted" : attentionStatus;
   const placeholderText = isVideoOff
     ? "Camera \u0111\u00e3 t\u1eaft"
     : "\u0110ang k\u1ebft n\u1ed1i...";
 
   const focusLabel =
-    isAiAbsent && absentNoticeVisible
+    isAiAbsent
       ? "V\u1eafng m\u1eb7t"
       : effectiveAttentionStatus === "distracted"
         ? "Kh\u00f4ng t\u1eadp trung"
         : effectiveAttentionStatus === "focused"
           ? "T\u1eadp trung"
-          : isAiAbsent
-            ? "\u0110ang ph\u00e2n t\u00edch"
-            : aiAttentionLabel || "\u0110ang ph\u00e2n t\u00edch";
+          : aiAttentionLabel || "\u0110ang ph\u00e2n t\u00edch";
 
   const focusBadgeClass =
-    (isAiAbsent && absentNoticeVisible) ||
-    effectiveAttentionStatus === "distracted"
-      ? "bg-rose-600/95 text-white border-rose-400/40"
+    isAiAbsent
+      ? "bg-rose-600/95 text-white border-rose-400/40 animate-pulse"
+      : effectiveAttentionStatus === "distracted"
+        ? "bg-rose-600/95 text-white border-rose-400/40"
       : effectiveAttentionStatus === "focused"
         ? "bg-emerald-500/95 text-slate-950 border-emerald-300/50"
         : "bg-slate-950/75 text-slate-200 border-white/10";
@@ -60,28 +58,15 @@ export default function VideoTile({
   const emotionValue = isLowConfidence
     ? "Ch\u01b0a r\u00f5"
     : isAiAbsent
-      ? "\u0110ang ph\u00e2n t\u00edch"
+      ? "V\u1eafng m\u1eb7t"
       : aiEmotionLabel || "\u0110ang ph\u00e2n t\u00edch";
   const emotionLabel =
-    !isVideoOff && !(isAiAbsent && absentNoticeVisible)
-      ? `C\u1ea3m x\u00fac: ${emotionValue}`
-      : null;
+    !isVideoOff ? `C\u1ea3m x\u00fac: ${emotionValue}` : null;
 
   const emotionBadgeClass =
     aiEmotionLabel && !isLowConfidence && effectiveAttentionStatus === "distracted"
       ? "bg-amber-500/95 text-slate-950 border-amber-300/50"
       : "bg-slate-950/75 text-slate-100 border-white/10";
-
-  useEffect(() => {
-    if (!isAiAbsent) return;
-
-    setAbsentNoticeVisible(true);
-    const timerId = window.setTimeout(() => {
-      setAbsentNoticeVisible(false);
-    }, 2000);
-
-    return () => window.clearTimeout(timerId);
-  }, [isAiAbsent, aiConfidence]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -90,15 +75,23 @@ export default function VideoTile({
         void videoRef.current.play().catch(() => undefined);
       }
     }
-  }, [stream]);
+
+    if (audioRef.current) {
+      audioRef.current.srcObject = stream || null;
+      if (stream && !isMuted) {
+        void audioRef.current.play().catch(() => undefined);
+      }
+    }
+  }, [stream, isMuted]);
 
   const getBorderColor = () => {
     if (role === "teacher") return "border-blue-500/50";
+    if (isAiAbsent) return "border-rose-500/60 ring-2 ring-rose-500/20 animate-pulse";
     switch (effectiveAttentionStatus) {
       case "focused":
         return "border-emerald-500/50";
       case "distracted":
-        return "border-rose-500/50 ring-2 ring-rose-500/10 animate-pulse";
+        return "border-rose-500/50";
       default:
         return "border-slate-800";
     }
@@ -109,13 +102,16 @@ export default function VideoTile({
       className={`aspect-video bg-slate-900 rounded-3xl border-2 ${getBorderColor()} relative overflow-hidden flex items-center justify-center group shadow-md transition-all duration-300`}
     >
       {stream && (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isMuted}
-          className={`w-full h-full object-cover ${shouldShowVideo ? "" : "absolute inset-0 opacity-0 pointer-events-none"} ${role === "teacher" ? "" : "scale-x-[-1]"}`}
-        />
+        <>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${shouldShowVideo ? "" : "absolute inset-0 opacity-0 pointer-events-none"} ${role === "teacher" ? "" : "scale-x-[-1]"}`}
+          />
+          <audio ref={audioRef} autoPlay muted={isMuted} className="hidden" />
+        </>
       )}
 
       {!shouldShowVideo && (
@@ -123,7 +119,7 @@ export default function VideoTile({
           <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center border border-white/5 shadow-inner text-slate-300 text-xl font-black uppercase">
             {(name || "?").charAt(0)}
           </div>
-          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">
+          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
             {placeholderText}
           </p>
         </div>
@@ -151,8 +147,8 @@ export default function VideoTile({
         </div>
       )}
 
-      {absentNoticeVisible && !isVideoOff && (
-        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center bg-slate-950/35 backdrop-blur-[1px]">
+      {isAiAbsent && !isVideoOff && (
+        <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center bg-slate-950/25 backdrop-blur-[1px] animate-pulse">
           <div className="rounded-2xl border border-rose-400/40 bg-rose-600/95 px-5 py-3 text-center text-white shadow-2xl">
             <p className="text-[10px] font-black uppercase tracking-widest">
               V\u1eafng m\u1eb7t

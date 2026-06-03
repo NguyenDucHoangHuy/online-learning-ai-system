@@ -9,3 +9,4 @@ scikit-learn
 joblib
 kaggle
 tf-keras
+tensorflow

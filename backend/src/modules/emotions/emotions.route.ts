@@ -11,6 +11,13 @@ import { requireApiKey } from "../../common/middleware/api-key.middleware";
 const router = Router();
 
 router.post(
+  "/sessions/:sessionId/analyze-frame",
+  authenticate,
+  emotionsValidation.analyzeFrame,
+  emotionsController.analyzeStudentFrame,
+);
+
+router.post(
   "/emotions/log",
   requireApiKey,
   emotionsValidation.createLog,

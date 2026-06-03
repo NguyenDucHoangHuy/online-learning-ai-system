@@ -27,7 +27,7 @@ import {
 } from "../../services/sessions/sessions.queries";
 import {
   aiService,
-  StudentAttentionAnalysis,
+  type StudentAttentionAnalysis,
 } from "../../services/ai/ai.service";
 import { ROUTES } from "../../constants";
 import { useSocket } from "../../socket/socket.client";
@@ -176,6 +176,8 @@ export default function TeachingRoomPage() {
   }, [remoteStreams]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") return;
+
     const analyzerTimers: number[] = [];
     const analyzerVideos: HTMLVideoElement[] = [];
 
@@ -262,6 +264,33 @@ export default function TeachingRoomPage() {
   ]);
 
   // REST Nạp danh sách chờ duyệt
+  useEffect(() => {
+    if (!socket || !isConnected || !sessionId) return;
+
+    const handleEmotionUpdate = (payload: {
+      sessionId: string;
+      studentId: string;
+      analysis?: StudentAttentionAnalysis;
+      recordedAt?: string;
+    }) => {
+      if (payload.sessionId !== sessionId || !payload.analysis) return;
+
+      setStudentAiStates((prev) => ({
+        ...prev,
+        [payload.studentId]: {
+          ...payload.analysis!,
+          updatedAt: payload.recordedAt || new Date().toISOString(),
+        },
+      }));
+    };
+
+    socket.on(SOCKET_EVENTS.EMOTION_UPDATE, handleEmotionUpdate);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.EMOTION_UPDATE, handleEmotionUpdate);
+    };
+  }, [socket, isConnected, sessionId]);
+
   useEffect(() => {
     if (!socket || !isConnected) return;
 
@@ -402,6 +431,11 @@ export default function TeachingRoomPage() {
     localStreamRef.current = localStream;
   }, [localStream]);
 
+  const mediaStateRef = useRef({ isMuted, isVideoOff });
+  useEffect(() => {
+    mediaStateRef.current = { isMuted, isVideoOff };
+  }, [isMuted, isVideoOff]);
+
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.srcObject = isVideoOff ? null : localStream;
@@ -495,6 +529,10 @@ export default function TeachingRoomPage() {
       if (payload.role === "STUDENT") {
         initiateCall(payload.userId, "STUDENT");
       }
+      socketEmitter.emitMediaState(socket, {
+        sessionId,
+        ...mediaStateRef.current,
+      });
 
       setOnlineParticipants((prev) => {
         if (
@@ -821,8 +859,9 @@ export default function TeachingRoomPage() {
             // 🎯 ĐỒNG BỘ CHUẨN LAN: Đọc trạng thái bẫy ra từ State Map Poller vãng lai
             const isStudentMuted =
               remoteMediaStates[item.studentId]?.isMuted ??
-              remoteHardwareStates[item.studentId]?.isMuted ??
-              true;
+              (studentStream
+                ? false
+                : remoteHardwareStates[item.studentId]?.isMuted ?? true);
             const isStudentVideoOff =
               remoteMediaStates[item.studentId]?.isVideoOff ??
               remoteHardwareStates[item.studentId]?.isVideoOff ??
@@ -832,8 +871,7 @@ export default function TeachingRoomPage() {
               <VideoTile
                 key={item.id}
                 name={item.student?.fullName || "Sinh viên"}
-                // Nếu học sinh gạt tắt cam hoàn toàn -> Truyền undefined để dập khung đen, tự đổ Avatar Placeholder tức thì!
-                stream={isStudentVideoOff ? undefined : studentStream}
+                stream={studentStream}
                 attentionStatus={
                   aiState?.status === "unfocused" || aiState?.presence === "absent"
                     ? "distracted"

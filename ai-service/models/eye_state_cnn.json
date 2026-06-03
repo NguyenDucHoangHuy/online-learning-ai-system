@@ -1,0 +1,14 @@
+{
+  "classes": [
+    "Closed",
+    "Open",
+    "no_yawn",
+    "yawn"
+  ],
+  "input_size": [
+    96,
+    96
+  ],
+  "color_mode": "rgb",
+  "model_type": "cnn"
+}

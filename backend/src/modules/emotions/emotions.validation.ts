@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 
-import { createEmotionLogSchema, realtimeQuerySchema } from "./emotions.dto";
+import {
+  analyzeStudentFrameSchema,
+  createEmotionLogSchema,
+  realtimeQuerySchema,
+} from "./emotions.dto";
 
 export const emotionsValidation = {
   createLog: (req: Request, _res: Response, next: NextFunction) => {
@@ -10,6 +14,11 @@ export const emotionsValidation = {
 
   realtime: (req: Request, _res: Response, next: NextFunction) => {
     req.query = realtimeQuerySchema.parse(req.query) as any;
+    next();
+  },
+
+  analyzeFrame: (req: Request, _res: Response, next: NextFunction) => {
+    req.body = analyzeStudentFrameSchema.parse(req.body);
     next();
   },
 };

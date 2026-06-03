@@ -1,0 +1,13 @@
+{
+  "classes": [
+    "Closed",
+    "Open",
+    "no_yawn",
+    "yawn"
+  ],
+  "input_size": [
+    64,
+    64
+  ],
+  "feature_kind": "hog_pixels_v1"
+}

@@ -2,6 +2,7 @@ from collections import Counter, defaultdict, deque
 import base64
 import math
 import os
+import threading
 from pathlib import Path
 
 import cv2
@@ -30,16 +31,28 @@ except Exception as error:
     DeepFace = None
     DEEPFACE_AVAILABLE = False
 
+try:
+    import tensorflow as tf
+
+    TF_AVAILABLE = True
+except Exception as error:
+    print("TensorFlow unavailable, deep learning models disabled:", error)
+    tf = None
+    TF_AVAILABLE = False
+
 app = Flask(__name__)
 CORS(app)
 
 MODEL_PATH = Path(__file__).parent / "models" / "face_landmarker.task"
 ENGAGEMENT_MODEL_PATH = Path(__file__).parent / "models" / "engagement_model.joblib"
 EMOTION_MODEL_PATH = Path(__file__).parent / "models" / "emotion_model.joblib"
+EYE_STATE_MODEL_PATH = Path(__file__).parent / "models" / "eye_state_model.joblib"
+EMOTION_CNN_MODEL_PATH = Path(__file__).parent / "models" / "emotion_cnn.keras"
+EYE_STATE_CNN_MODEL_PATH = Path(__file__).parent / "models" / "eye_state_cnn.keras"
 face_landmarker = vision.FaceLandmarker.create_from_options(
     vision.FaceLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=str(MODEL_PATH)),
-        running_mode=vision.RunningMode.IMAGE,
+        running_mode=vision.RunningMode.VIDEO,
         num_faces=1,
         min_face_detection_confidence=0.55,
         min_face_presence_confidence=0.55,
@@ -49,11 +62,19 @@ face_landmarker = vision.FaceLandmarker.create_from_options(
 )
 
 emotion_history = defaultdict(lambda: deque(maxlen=5))
+emotion_score_history = defaultdict(lambda: deque(maxlen=5))
 attention_history = defaultdict(lambda: deque(maxlen=5))
 presence_history = defaultdict(lambda: deque(maxlen=5))
+deepface_history = {}
+deepface_frame_counts = defaultdict(int)
 last_present_response = {}
+landmark_timestamp_ms = 0
+landmark_lock = threading.Lock()
 engagement_model_artifact = None
 emotion_model_artifact = None
+eye_state_model_artifact = None
+emotion_cnn_artifact = None
+eye_state_cnn_artifact = None
 
 
 def load_engagement_model():
@@ -93,23 +114,78 @@ def load_emotion_model():
 
 emotion_model_artifact = load_emotion_model()
 
+
+def load_eye_state_model():
+    if not JOBLIB_AVAILABLE or joblib is None or not EYE_STATE_MODEL_PATH.exists():
+        return None
+
+    try:
+        artifact = joblib.load(EYE_STATE_MODEL_PATH)
+        if isinstance(artifact, dict) and "model" in artifact:
+            print(f"Loaded eye/yawn model: {EYE_STATE_MODEL_PATH}")
+            return artifact
+        print("Invalid eye/yawn model artifact, using MediaPipe fallback")
+        return None
+    except Exception as error:
+        print("Eye/yawn model unavailable, using MediaPipe fallback:", error)
+        return None
+
+
+eye_state_model_artifact = load_eye_state_model()
+
+
+def load_keras_artifact(model_path):
+    metadata_path = model_path.with_suffix(".json")
+    if not TF_AVAILABLE or tf is None or not model_path.exists() or not metadata_path.exists():
+        return None
+
+    try:
+        model = tf.keras.models.load_model(model_path)
+        import json
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        print(f"Loaded deep learning model: {model_path}")
+        return {"model": model, **metadata}
+    except Exception as error:
+        print(f"Deep learning model unavailable ({model_path}):", error)
+        return None
+
+
+emotion_cnn_artifact = load_keras_artifact(EMOTION_CNN_MODEL_PATH)
+eye_state_cnn_artifact = load_keras_artifact(EYE_STATE_CNN_MODEL_PATH)
+
 EMOTION_TO_VI = {
     "happy": "vui vẻ",
     "sad": "buồn",
     "angry": "tức giận",
     "neutral": "bình thường",
     "surprise": "ngạc nhiên",
-    "fear": "lo lắng",
-    "disgust": "khó chịu",
+    "fear": "lo l\u1eafng",
+    "disgust": "kh\u00f3 ch\u1ecbu",
 }
 
-FOCUSED_EMOTIONS = {"happy", "neutral", "surprise"}
-UNFOCUSED_EMOTIONS = {"sad", "angry"}
+FOCUSED_EMOTIONS = {"happy", "neutral"}
+UNFOCUSED_EMOTIONS = {"sleepy"}
 MIN_EMOTION_CONFIDENCE = 0.28
 DEEPFACE_MIN_CONFIDENCE = 0.35
-USE_DEEPFACE = os.getenv("USE_DEEPFACE", "true").strip().lower() == "true"
-EMOTION_MODEL_MIN_CONFIDENCE = 0.45
+USE_DEEPFACE = os.getenv("USE_DEEPFACE", "false").strip().lower() == "true"
+INCLUDE_LANDMARKS = os.getenv("INCLUDE_LANDMARKS", "false").strip().lower() == "true"
+DEEPFACE_INTERVAL = max(1, int(os.getenv("DEEPFACE_INTERVAL", "5")))
+FAST_LANDMARK_EMOTION = os.getenv("FAST_LANDMARK_EMOTION", "true").strip().lower() == "true"
+EMOTION_CNN_MIN_CONFIDENCE = 0.5
+EMOTION_MODEL_MIN_CONFIDENCE = 0.68
+EMOTION_ENSEMBLE_MIN_CONFIDENCE = 0.34
 NEGATIVE_EMOTION_MIN_CONFIDENCE = 0.55
+EYE_STATE_MODEL_MIN_CONFIDENCE = 0.72
+EYE_STATE_CNN_MIN_CONFIDENCE = 0.92
+EYE_RULE_MIN_CONFIDENCE = 0.74
+LANDMARK_HAPPY_SMILE_MIN = 0.28
+LANDMARK_SLEEPY_EYE_MIN = 0.68
+LANDMARK_SLEEPY_MOUTH_MIN = 0.82
+LANDMARK_YAWN_JAW_OPEN_MIN = 0.48
+LANDMARK_BIG_YAWN_JAW_OPEN_MIN = 0.62
+LANDMARK_YAWN_EYE_SUPPORT_MIN = 0.22
+LANDMARK_YAWN_SMILE_GUARD_MAX = 0.52
 
 EMOTION_TO_VI.update(
     {
@@ -118,8 +194,8 @@ EMOTION_TO_VI.update(
         "angry": "Tức giận",
         "neutral": "Bình thường",
         "surprise": "Ngạc nhiên",
-        "fear": "Lo lắng",
-        "disgust": "Khó chịu",
+        "fear": "Lo l\u1eafng",
+        "disgust": "Kh\u00f3 ch\u1ecbu",
     }
 )
 EMOTION_TO_VI.update(
@@ -133,6 +209,7 @@ EMOTION_TO_VI.update(
         "disgust": "Kh\u00f3 ch\u1ecbu",
     }
 )
+EMOTION_TO_VI["sleepy"] = "Bu\u1ed3n ng\u1ee7"
 
 
 def decode_base64_image(base64_string):
@@ -160,9 +237,13 @@ def preprocess_image(image):
 
 
 def get_face_landmark_analysis(image):
+    global landmark_timestamp_ms
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
-    result = face_landmarker.detect(mp_image)
+    with landmark_lock:
+        landmark_timestamp_ms += 33
+        timestamp_ms = landmark_timestamp_ms
+    result = face_landmarker.detect_for_video(mp_image, timestamp_ms)
 
     if not result.face_landmarks:
         return None, {}
@@ -182,10 +263,10 @@ def get_face_landmark_analysis(image):
 
     blendshapes = {}
     if result.face_blendshapes:
-      blendshapes = {
-          category.category_name: round(float(category.score), 4)
-          for category in result.face_blendshapes[0]
-      }
+        blendshapes = {
+            category.category_name: round(float(category.score), 4)
+            for category in result.face_blendshapes[0]
+        }
 
     return landmark_points, blendshapes
 
@@ -297,6 +378,56 @@ def crop_face_from_box(image, face_box, padding_ratio=0.18):
     return image[y1:y2, x1:x2]
 
 
+def crop_aligned_face_from_landmarks(image, landmarks, padding_ratio=0.22):
+    if not landmarks or len(landmarks) <= 362:
+        return None
+
+    try:
+        height, width = image.shape[:2]
+        left_eye = np.mean(
+            [[landmarks[index]["px"], landmarks[index]["py"]] for index in [33, 133]],
+            axis=0,
+        )
+        right_eye = np.mean(
+            [[landmarks[index]["px"], landmarks[index]["py"]] for index in [362, 263]],
+            axis=0,
+        )
+        eye_center = ((left_eye + right_eye) / 2.0).astype("float32")
+        delta_y = float(right_eye[1] - left_eye[1])
+        delta_x = float(right_eye[0] - left_eye[0])
+        angle = math.degrees(math.atan2(delta_y, delta_x))
+
+        rotation = cv2.getRotationMatrix2D(tuple(eye_center), angle, 1.0)
+        rotated = cv2.warpAffine(
+            image,
+            rotation,
+            (width, height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
+        points = np.array([[point["px"], point["py"], 1.0] for point in landmarks], dtype="float32")
+        rotated_points = points @ rotation.T
+        min_x, min_y = np.min(rotated_points[:, :2], axis=0)
+        max_x, max_y = np.max(rotated_points[:, :2], axis=0)
+        box_size = max(max_x - min_x, max_y - min_y)
+        padding = box_size * padding_ratio
+        center_x = (min_x + max_x) / 2.0
+        center_y = (min_y + max_y) / 2.0
+        half_size = (box_size + padding * 2.0) / 2.0
+
+        x1 = int(max(0, round(center_x - half_size)))
+        y1 = int(max(0, round(center_y - half_size)))
+        x2 = int(min(width, round(center_x + half_size)))
+        y2 = int(min(height, round(center_y + half_size)))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return rotated[y1:y2, x1:x2]
+    except Exception as error:
+        print("Aligned face crop fallback:", error)
+        return None
+
+
 def analyze_emotion_with_deepface(face_image):
     if not DEEPFACE_AVAILABLE or DeepFace is None or face_image is None:
         return None
@@ -335,6 +466,30 @@ def analyze_emotion_with_deepface(face_image):
         return None
 
 
+def predict_emotion_with_cnn(face_image):
+    if not emotion_cnn_artifact or face_image is None:
+        return None
+
+    try:
+        model = emotion_cnn_artifact["model"]
+        classes = emotion_cnn_artifact.get("classes", [])
+        input_size = tuple(emotion_cnn_artifact.get("input_size", [48, 48]))
+        gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+        resized = cv2.resize(gray, input_size, interpolation=cv2.INTER_AREA)
+        sample = resized.astype("float32")[None, ..., None]
+        probabilities = model.predict(sample, verbose=0)[0]
+        index = int(np.argmax(probabilities))
+        confidence = round(float(probabilities[index]), 3)
+        scores = {
+            str(label): round(float(probability) * 100, 2)
+            for label, probability in zip(classes, probabilities)
+        }
+        return normalize_emotion_for_app(classes[index]), confidence, scores
+    except Exception as error:
+        print("Emotion CNN prediction fallback:", error)
+        return None
+
+
 def predict_emotion_with_model(face_image):
     if not emotion_model_artifact or face_image is None:
         return None
@@ -342,9 +497,17 @@ def predict_emotion_with_model(face_image):
     try:
         model = emotion_model_artifact["model"]
         classes = emotion_model_artifact.get("classes", [])
-        gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (48, 48), interpolation=cv2.INTER_AREA)
-        sample = (resized.astype("float32") / 255.0).reshape(1, -1)
+        feature_kind = emotion_model_artifact.get("feature_kind", "pixels_v1")
+        if feature_kind == "hog_pixels_v1":
+            input_size = tuple(emotion_model_artifact.get("input_size", [64, 64]))
+            sample = extract_emotion_model_features(face_image, input_size)
+        elif feature_kind == "pixels_eq_v2":
+            input_size = tuple(emotion_model_artifact.get("input_size", [48, 48]))
+            sample = extract_fast_emotion_model_features(face_image, input_size)
+        else:
+            gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+            resized = cv2.resize(gray, (48, 48), interpolation=cv2.INTER_AREA)
+            sample = (resized.astype("float32") / 255.0).reshape(1, -1)
         prediction = str(model.predict(sample)[0]).lower()
         confidence = 0.5
         scores = {label: 0.0 for label in classes}
@@ -364,6 +527,275 @@ def predict_emotion_with_model(face_image):
     except Exception as error:
         print("Emotion model prediction fallback:", error)
         return None
+
+
+def create_emotion_hog_descriptor(image_size):
+    width, height = image_size
+    return cv2.HOGDescriptor(
+        _winSize=(width, height),
+        _blockSize=(16, 16),
+        _blockStride=(8, 8),
+        _cellSize=(8, 8),
+        _nbins=9,
+    )
+
+
+def extract_emotion_model_features(image, image_size=(64, 64)):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    resized = cv2.resize(gray, image_size, interpolation=cv2.INTER_AREA)
+    equalized = cv2.equalizeHist(resized)
+    hog = create_emotion_hog_descriptor(image_size).compute(equalized).reshape(-1)
+    pixels = (equalized.astype("float32") / 255.0).reshape(-1)
+    stats = np.array(
+        [
+            float(np.mean(equalized)) / 255.0,
+            float(np.std(equalized)) / 255.0,
+        ],
+        dtype="float32",
+    )
+    return np.concatenate([hog.astype("float32"), pixels, stats]).reshape(1, -1)
+
+
+def extract_fast_emotion_model_features(image, image_size=(48, 48)):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    resized = cv2.resize(gray, image_size, interpolation=cv2.INTER_AREA)
+    equalized = cv2.equalizeHist(resized)
+    pixels = (equalized.astype("float32") / 255.0).reshape(-1)
+    stats = np.array(
+        [
+            float(np.mean(equalized)) / 255.0,
+            float(np.std(equalized)) / 255.0,
+        ],
+        dtype="float32",
+    )
+    return np.concatenate([pixels, stats]).reshape(1, -1)
+
+
+def create_eye_state_hog_descriptor(image_size):
+    width, height = image_size
+    return cv2.HOGDescriptor(
+        _winSize=(width, height),
+        _blockSize=(16, 16),
+        _blockStride=(8, 8),
+        _cellSize=(8, 8),
+        _nbins=9,
+    )
+
+
+def extract_eye_state_features(image, image_size=(64, 64)):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    resized = cv2.resize(gray, image_size, interpolation=cv2.INTER_AREA)
+    equalized = cv2.equalizeHist(resized)
+    hog = create_eye_state_hog_descriptor(image_size).compute(equalized).reshape(-1)
+    pixels = (equalized.astype("float32") / 255.0).reshape(-1)
+    stats = np.array(
+        [
+            float(np.mean(equalized)) / 255.0,
+            float(np.std(equalized)) / 255.0,
+        ],
+        dtype="float32",
+    )
+    return np.concatenate([hog.astype("float32"), pixels, stats]).reshape(1, -1)
+
+
+def predict_eye_state_with_model(face_image):
+    if not eye_state_model_artifact or face_image is None:
+        return None
+
+    try:
+        model = eye_state_model_artifact["model"]
+        input_size = tuple(eye_state_model_artifact.get("input_size", [64, 64]))
+        sample = extract_eye_state_features(face_image, input_size)
+        prediction = str(model.predict(sample)[0])
+        confidence = 0.5
+        scores = {}
+
+        if hasattr(model, "predict_proba"):
+            probabilities = model.predict_proba(sample)[0]
+            confidence = round(float(np.max(probabilities)), 3)
+            scores = {
+                str(label): round(float(probability) * 100, 2)
+                for label, probability in zip(model.classes_, probabilities)
+            }
+
+        return prediction, confidence, scores
+    except Exception as error:
+        print("Eye/yawn model prediction fallback:", error)
+        return None
+
+
+def predict_eye_state_with_cnn(face_image):
+    if not eye_state_cnn_artifact or face_image is None:
+        return None
+
+    try:
+        model = eye_state_cnn_artifact["model"]
+        classes = eye_state_cnn_artifact.get("classes", [])
+        input_size = tuple(eye_state_cnn_artifact.get("input_size", [96, 96]))
+        rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(rgb, input_size, interpolation=cv2.INTER_AREA)
+        sample = resized.astype("float32")[None, ...]
+        probabilities = model.predict(sample, verbose=0)[0]
+        index = int(np.argmax(probabilities))
+        confidence = round(float(probabilities[index]), 3)
+        scores = {
+            str(label): round(float(probability) * 100, 2)
+            for label, probability in zip(classes, probabilities)
+        }
+        return str(classes[index]), confidence, scores
+    except Exception as error:
+        print("Eye/yawn CNN prediction fallback:", error)
+        return None
+
+
+def analyze_eye_yawn_from_landmarks(blendshapes):
+    def score(name):
+        return float(blendshapes.get(name, 0))
+
+    blink = (score("eyeBlinkLeft") + score("eyeBlinkRight")) / 2
+    squint = (score("eyeSquintLeft") + score("eyeSquintRight")) / 2
+    wide = (score("eyeWideLeft") + score("eyeWideRight")) / 2
+    jaw_open = score("jawOpen")
+    smile = (score("mouthSmileLeft") + score("mouthSmileRight")) / 2
+
+    closed_score = max(0.0, blink * 0.82 + squint * 0.28 - wide * 0.18)
+    eye_support = max(blink, squint, closed_score)
+    yawn_score = max(0.0, jaw_open * 0.92 + eye_support * 0.24 - smile * 0.18 - wide * 0.08)
+    open_score = max(0.0, wide * 0.68 + (1.0 - blink) * 0.28)
+
+    is_big_yawn = (
+        jaw_open >= LANDMARK_BIG_YAWN_JAW_OPEN_MIN
+        and smile <= LANDMARK_YAWN_SMILE_GUARD_MAX
+    )
+    is_sleepy_yawn = (
+        jaw_open >= LANDMARK_YAWN_JAW_OPEN_MIN
+        and eye_support >= LANDMARK_YAWN_EYE_SUPPORT_MIN
+        and smile <= LANDMARK_YAWN_SMILE_GUARD_MAX
+    )
+
+    if is_big_yawn or is_sleepy_yawn or yawn_score >= EYE_RULE_MIN_CONFIDENCE:
+        confidence = min(0.99, round(max(yawn_score, jaw_open), 3))
+        return "yawn", confidence, {
+            "Closed": round(closed_score * 100, 2),
+            "Open": round(open_score * 100, 2),
+            "yawn": round(confidence * 100, 2),
+        }
+
+    if closed_score >= EYE_RULE_MIN_CONFIDENCE:
+        return "Closed", min(0.99, round(closed_score, 3)), {
+            "Closed": round(closed_score * 100, 2),
+            "Open": round(open_score * 100, 2),
+            "yawn": round(yawn_score * 100, 2),
+        }
+
+    return "Open", min(0.99, round(open_score, 3)), {
+        "Closed": round(closed_score * 100, 2),
+        "Open": round(open_score * 100, 2),
+        "yawn": round(yawn_score * 100, 2),
+    }
+
+
+def choose_eye_state_result(face_crop, blendshapes):
+    landmark_result = analyze_eye_yawn_from_landmarks(blendshapes)
+    cnn_result = predict_eye_state_with_cnn(face_crop)
+    model_result = predict_eye_state_with_model(face_crop)
+    landmark_label, landmark_confidence, _landmark_scores = landmark_result
+
+    if cnn_result:
+        cnn_label, cnn_confidence, cnn_scores = cnn_result
+        landmark_agrees = (
+            cnn_label == landmark_label
+            or (cnn_label in {"Closed", "yawn"} and landmark_label in {"Closed", "yawn"})
+        )
+        if (
+            cnn_label in {"Closed", "yawn"}
+            and cnn_confidence >= EYE_STATE_CNN_MIN_CONFIDENCE
+            and landmark_confidence >= EYE_RULE_MIN_CONFIDENCE
+            and landmark_agrees
+        ):
+            return cnn_label, cnn_confidence, cnn_scores, "eye_state_cnn"
+
+    if model_result:
+        model_label, model_confidence, model_scores = model_result
+        if model_label in {"Closed", "yawn"} and model_confidence >= EYE_STATE_MODEL_MIN_CONFIDENCE:
+            return model_label, model_confidence, model_scores, "eye_state_model"
+
+    label, confidence, scores = landmark_result
+    return label, confidence, scores, "mediapipe_eye_rules"
+
+
+def analyze_priority_emotion_from_landmarks(blendshapes):
+    def score(name):
+        return float(blendshapes.get(name, 0))
+
+    smile = (score("mouthSmileLeft") + score("mouthSmileRight")) / 2
+    cheek_squint = (score("cheekSquintLeft") + score("cheekSquintRight")) / 2
+    blink = (score("eyeBlinkLeft") + score("eyeBlinkRight")) / 2
+    squint = (score("eyeSquintLeft") + score("eyeSquintRight")) / 2
+    wide = (score("eyeWideLeft") + score("eyeWideRight")) / 2
+    jaw_open = score("jawOpen")
+
+    closed_score = max(0.0, blink * 0.88 + squint * 0.18 - wide * 0.12)
+    eye_support = max(blink, squint, closed_score)
+    mouth_sleepy_score = max(0.0, jaw_open * 0.95 + eye_support * 0.22 - smile * 0.22)
+    happy_score = max(0.0, smile * 1.18 + cheek_squint * 0.22 - blink * 0.12)
+
+    if closed_score >= EYE_RULE_MIN_CONFIDENCE:
+        confidence = min(0.99, round(closed_score, 3))
+        return "sleepy", confidence, {
+            "sleepy": round(confidence * 100, 2),
+            "happy": round(max(0.0, happy_score) * 100, 2),
+            "neutral": round(max(0.0, (1.0 - confidence)) * 100, 2),
+        }, "eyes_closed_landmark"
+
+    is_big_yawn = (
+        jaw_open >= LANDMARK_BIG_YAWN_JAW_OPEN_MIN
+        and smile <= LANDMARK_YAWN_SMILE_GUARD_MAX
+    )
+    is_sleepy_yawn = (
+        jaw_open >= LANDMARK_YAWN_JAW_OPEN_MIN
+        and eye_support >= LANDMARK_YAWN_EYE_SUPPORT_MIN
+        and smile <= LANDMARK_YAWN_SMILE_GUARD_MAX
+    )
+
+    if is_big_yawn or is_sleepy_yawn or mouth_sleepy_score >= LANDMARK_SLEEPY_MOUTH_MIN:
+        confidence = min(0.99, round(max(mouth_sleepy_score, jaw_open), 3))
+        return "sleepy", confidence, {
+            "sleepy": round(confidence * 100, 2),
+            "happy": round(max(0.0, happy_score) * 100, 2),
+            "neutral": round(max(0.0, (1.0 - confidence)) * 100, 2),
+        }, "mouth_open_landmark"
+
+    if happy_score >= LANDMARK_HAPPY_SMILE_MIN and smile >= 0.2:
+        confidence = min(0.99, round(happy_score, 3))
+        return "happy", confidence, {
+            "happy": round(confidence * 100, 2),
+            "sleepy": round(max(closed_score, mouth_sleepy_score) * 100, 2),
+            "neutral": round(max(0.0, (1.0 - confidence)) * 100, 2),
+        }, "smile_landmark"
+
+    if closed_score >= LANDMARK_SLEEPY_EYE_MIN and happy_score < LANDMARK_HAPPY_SMILE_MIN:
+        confidence = min(0.99, round(closed_score, 3))
+        return "sleepy", confidence, {
+            "sleepy": round(confidence * 100, 2),
+            "happy": round(max(0.0, happy_score) * 100, 2),
+            "neutral": round(max(0.0, (1.0 - confidence)) * 100, 2),
+        }, "eyes_closed_landmark"
+
+    return None
+
+
+def analyze_fast_landmark_emotion(blendshapes):
+    priority_result = analyze_priority_emotion_from_landmarks(blendshapes)
+    if priority_result:
+        return priority_result
+
+    scores = {
+        "neutral": 100.0,
+        "happy": 0.0,
+        "sleepy": 0.0,
+    }
+    return "neutral", 0.72, scores, "neutral_landmark"
 
 
 def analyze_emotion_from_landmarks(blendshapes, student_id):
@@ -393,34 +825,91 @@ def analyze_emotion_from_landmarks(blendshapes, student_id):
     strongest_expression = max(raw_scores.values(), default=0)
     raw_scores["neutral"] = max(0.12, 0.48 - strongest_expression)
 
-    dominant = max(raw_scores, key=raw_scores.get)
     if strongest_expression < 0.16:
-        dominant = "neutral"
-
-    emotion_history[student_id].append(dominant)
-    stable_emotion = Counter(emotion_history[student_id]).most_common(1)[0][0]
+        raw_scores["neutral"] = max(raw_scores["neutral"], 0.62)
 
     total = sum(raw_scores.values()) or 1
     normalized_scores = {
         key: round((value / total) * 100, 2)
         for key, value in raw_scores.items()
     }
-    confidence = normalized_scores.get(stable_emotion, 0) / 100
+    dominant = max(normalized_scores, key=normalized_scores.get)
+    confidence = normalized_scores.get(dominant, 0) / 100
 
-    return stable_emotion, round(confidence, 3), normalized_scores
+    return dominant, round(confidence, 3), normalized_scores
 
 
 def normalize_emotion_for_app(emotion):
     emotion = str(emotion or "neutral").lower()
     if emotion in {"normal", "neutral"}:
         return "neutral"
-    if emotion == "disgust":
-        return "angry"
-    if emotion == "fear":
-        return "sad"
-    if emotion in {"happy", "sad", "angry", "surprise"}:
+    if emotion in {"happy", "sad", "angry", "surprise", "fear", "disgust", "sleepy"}:
         return emotion
     return "neutral"
+
+
+def normalize_emotion_scores(scores):
+    normalized = {
+        "angry": 0.0,
+        "disgust": 0.0,
+        "fear": 0.0,
+        "happy": 0.0,
+        "neutral": 0.0,
+        "sad": 0.0,
+        "surprise": 0.0,
+    }
+    for label, score in (scores or {}).items():
+        emotion = normalize_emotion_for_app(label)
+        if emotion in normalized:
+            normalized[emotion] += max(0.0, float(score))
+
+    total = sum(normalized.values())
+    if total <= 0:
+        normalized["neutral"] = 1.0
+        return normalized
+    if total > 1.01:
+        return {label: value / 100.0 for label, value in normalized.items()}
+    return normalized
+
+
+def blend_emotion_results(results):
+    blended = {
+        "angry": 0.0,
+        "disgust": 0.0,
+        "fear": 0.0,
+        "happy": 0.0,
+        "neutral": 0.0,
+        "sad": 0.0,
+        "surprise": 0.0,
+    }
+    total_weight = 0.0
+
+    for _source, weight, scores in results:
+        probabilities = normalize_emotion_scores(scores)
+        confidence_scale = max(probabilities.values(), default=0.0)
+        adjusted_weight = weight * max(0.35, confidence_scale)
+        total_weight += adjusted_weight
+        for emotion, probability in probabilities.items():
+            blended[emotion] += probability * adjusted_weight
+
+    if total_weight <= 0:
+        blended["neutral"] = 1.0
+        return blended
+    return {emotion: value / total_weight for emotion, value in blended.items()}
+
+
+def stabilize_emotion_from_scores(student_key, scores):
+    emotion_score_history[student_key].append(scores)
+    averaged = {
+        emotion: float(np.mean([frame_scores.get(emotion, 0.0) for frame_scores in emotion_score_history[student_key]]))
+        for emotion in scores
+    }
+    stable_emotion = max(averaged, key=averaged.get)
+    stable_confidence = round(float(averaged[stable_emotion]), 3)
+    emotion_history[student_key].append(stable_emotion)
+    voted_emotion = Counter(emotion_history[student_key]).most_common(1)[0][0]
+    voted_confidence = round(float(averaged.get(voted_emotion, stable_confidence)), 3)
+    return voted_emotion, voted_confidence, averaged
 
 
 def build_absent_response(reason):
@@ -544,39 +1033,175 @@ def decide_attention_from_rules(head_pose, emotion, confidence):
     yaw = abs(float(head_pose.get("yaw", 0)))
     pitch = abs(float(head_pose.get("pitch", 0)))
 
-    if yaw > 32 or pitch > 28:
+    is_extreme_pose = yaw > 45 or pitch > 40
+    is_clearly_away = yaw > 34 or pitch > 30
+
+    if emotion in UNFOCUSED_EMOTIONS and confidence >= MIN_EMOTION_CONFIDENCE:
+        return "unfocused", "LOW", False, "emotion_rules"
+
+    if emotion in FOCUSED_EMOTIONS:
+        return "focused", "HIGH", True, "emotion_rules"
+
+    if is_extreme_pose:
         return "unfocused", "LOW", False, "pose_rules"
 
-    if emotion in UNFOCUSED_EMOTIONS and confidence >= NEGATIVE_EMOTION_MIN_CONFIDENCE:
-        return "unfocused", "LOW", False, "emotion_rules"
+    if is_clearly_away:
+        return "normal", "MEDIUM", True, "pose_rules"
 
     if not head_pose.get("is_frontal"):
         return "normal", "MEDIUM", True, "pose_rules"
 
-    return "focused", "HIGH", True, "pose_rules"
+    if emotion in FOCUSED_EMOTIONS:
+        return "focused", "HIGH", True, "emotion_rules"
+
+    return "normal", "MEDIUM", True, "pose_rules"
 
 
 def choose_emotion_result(face_crop, blendshapes, student_id):
+    if FAST_LANDMARK_EMOTION:
+        emotion, confidence, scores, source = analyze_fast_landmark_emotion(blendshapes)
+        eye_label, eye_confidence, eye_scores = analyze_eye_yawn_from_landmarks(blendshapes)
+        eye_source = "mediapipe_eye_rules"
+        if source == "eyes_closed_landmark":
+            eye_label = "Closed"
+            eye_confidence = confidence
+            eye_source = source
+            eye_scores = {"Closed": round(confidence * 100, 2), "Open": 0.0, "yawn": 0.0}
+        elif source == "mouth_open_landmark":
+            eye_label = "yawn"
+            eye_confidence = confidence
+            eye_source = source
+            eye_scores = {"Closed": 0.0, "Open": 0.0, "yawn": round(confidence * 100, 2)}
+        emotion_history[student_id].append(emotion)
+        return (
+            emotion,
+            confidence,
+            scores,
+            source,
+            {
+                "label": eye_label,
+                "confidence": eye_confidence,
+                "scores": eye_scores,
+                "source": eye_source,
+            },
+        )
+
+    priority_emotion = analyze_priority_emotion_from_landmarks(blendshapes)
+    if priority_emotion:
+        emotion, confidence, scores, source = priority_emotion
+        eye_label, eye_confidence, eye_scores, eye_source = analyze_eye_yawn_from_landmarks(blendshapes)
+        if source == "eyes_closed_landmark":
+            eye_label = "Closed"
+            eye_confidence = confidence
+            eye_source = source
+            eye_scores = {"Closed": round(confidence * 100, 2), "Open": 0.0, "yawn": 0.0}
+        elif source == "mouth_open_landmark":
+            eye_label = "yawn"
+            eye_confidence = confidence
+            eye_source = source
+            eye_scores = {"Closed": 0.0, "Open": 0.0, "yawn": round(confidence * 100, 2)}
+        emotion_history[student_id].append(emotion)
+        return (
+            emotion,
+            confidence,
+            scores,
+            source,
+            {
+                "label": eye_label,
+                "confidence": eye_confidence,
+                "scores": eye_scores,
+                "source": eye_source,
+            },
+        )
+
+    cnn_result = predict_emotion_with_cnn(face_crop)
     model_result = predict_emotion_with_model(face_crop)
-    deepface_result = analyze_emotion_with_deepface(face_crop) if USE_DEEPFACE else None
+    eye_state = choose_eye_state_result(face_crop, blendshapes)
+    eye_label, eye_confidence, eye_scores, eye_source = eye_state
+    landmark_result = analyze_emotion_from_landmarks(blendshapes, student_id)
+    landmark_emotion, landmark_confidence, landmark_scores = landmark_result
 
-    candidates = []
+    if eye_label in {"Closed", "yawn"} and eye_confidence >= EYE_RULE_MIN_CONFIDENCE:
+        return (
+            "sleepy",
+            eye_confidence,
+            eye_scores,
+            eye_source,
+            {
+                "label": eye_label,
+                "confidence": eye_confidence,
+                "scores": eye_scores,
+                "source": eye_source,
+            },
+        )
+
+    ensemble_inputs = []
+    sources = []
+    if cnn_result:
+        cnn_emotion, cnn_confidence, cnn_scores = cnn_result
+        if cnn_confidence >= EMOTION_ENSEMBLE_MIN_CONFIDENCE:
+            ensemble_inputs.append(("emotion_cnn", 0.58, cnn_scores))
+            sources.append(("emotion_cnn", cnn_emotion, cnn_confidence))
+
     if model_result:
-        candidates.append(("emotion_model", *model_result))
-    if deepface_result:
-        candidates.append(("deepface", *deepface_result))
+        model_emotion, model_confidence, model_scores = model_result
+        if model_confidence >= EMOTION_ENSEMBLE_MIN_CONFIDENCE:
+            ensemble_inputs.append(("emotion_model", 0.24, model_scores))
+            sources.append(("emotion_model", model_emotion, model_confidence))
 
-    if candidates:
-        source, emotion, confidence, scores = max(candidates, key=lambda item: item[2])
-        if confidence < MIN_EMOTION_CONFIDENCE:
-            emotion = "neutral"
-        emotion_history[student_id].append(normalize_emotion_for_app(emotion))
-        stable_emotion = Counter(emotion_history[student_id]).most_common(1)[0][0]
-        stable_confidence = round(float(scores.get(stable_emotion, confidence * 100)) / 100, 3)
-        return stable_emotion, stable_confidence, scores, source
+    deepface_result = None
+    if USE_DEEPFACE:
+        deepface_result = analyze_emotion_with_deepface(face_crop)
+        if deepface_result:
+            deepface_emotion, deepface_confidence, deepface_scores = deepface_result
+            if deepface_confidence >= DEEPFACE_MIN_CONFIDENCE:
+                ensemble_inputs.append(("deepface", 0.18, deepface_scores))
+                sources.append(("deepface", deepface_emotion, deepface_confidence))
 
-    emotion, confidence, scores = analyze_emotion_from_landmarks(blendshapes, student_id)
-    return normalize_emotion_for_app(emotion), confidence, scores, "mediapipe_rules"
+    if landmark_confidence >= MIN_EMOTION_CONFIDENCE:
+        landmark_weight = 0.22 if landmark_emotion != "neutral" else 0.14
+        ensemble_inputs.append(("mediapipe_blendshapes", landmark_weight, landmark_scores))
+        sources.append(("mediapipe_blendshapes", landmark_emotion, landmark_confidence))
+
+    if ensemble_inputs:
+        blended_scores = blend_emotion_results(ensemble_inputs)
+        stable_emotion, stable_confidence, stable_scores = stabilize_emotion_from_scores(
+            student_id,
+            blended_scores,
+        )
+        if stable_confidence < MIN_EMOTION_CONFIDENCE:
+            stable_emotion = "neutral"
+        display_scores = {
+            emotion: round(probability * 100, 2)
+            for emotion, probability in stable_scores.items()
+        }
+        source_names = "+".join(source for source, _weight, _scores in ensemble_inputs)
+        return (
+            stable_emotion,
+            stable_confidence,
+            display_scores,
+            f"ensemble:{source_names}",
+            {
+                "label": eye_label,
+                "confidence": eye_confidence,
+                "scores": eye_scores,
+                "source": eye_source,
+            },
+        )
+
+    emotion, confidence, scores = landmark_result
+    return (
+        normalize_emotion_for_app(emotion),
+        confidence,
+        scores,
+        "mediapipe_rules",
+        {
+            "label": eye_label,
+            "confidence": eye_confidence,
+            "scores": eye_scores,
+            "source": eye_source,
+        },
+    )
 
 
 def maybe_hold_last_present(student_key, reason):
@@ -593,6 +1218,10 @@ def maybe_hold_last_present(student_key, reason):
 
 def stabilize_attention(student_key, status, attention_level, is_focused):
     attention_history[student_key].append(status)
+
+    if status == "focused":
+        return status, attention_level, is_focused
+
     stable_status = Counter(attention_history[student_key]).most_common(1)[0][0]
     if stable_status == status:
         return status, attention_level, is_focused
@@ -605,9 +1234,43 @@ def stabilize_attention(student_key, status, attention_level, is_focused):
     return stable_status, stable_level, stable_status != "unfocused"
 
 
+def decide_fixed_attention_policy(emotion, eye_state):
+    eye_label = str((eye_state or {}).get("label") or "")
+    eye_confidence = float((eye_state or {}).get("confidence") or 0)
+
+    if emotion == "sleepy" or (
+        eye_label in {"Closed", "yawn"} and eye_confidence >= MIN_EMOTION_CONFIDENCE
+    ):
+        return {
+            "status": "unfocused",
+            "attentionLevel": "LOW",
+            "isFocused": False,
+            "attentionSource": "fixed_sleepy_policy",
+            "attentionConfidence": max(eye_confidence, 0.0),
+        }
+
+    if emotion in {"happy", "neutral"}:
+        return {
+            "status": "focused",
+            "attentionLevel": "HIGH",
+            "isFocused": True,
+            "attentionSource": "fixed_emotion_policy",
+            "attentionConfidence": None,
+        }
+
+    return {
+        "status": "normal",
+        "attentionLevel": "MEDIUM",
+        "isFocused": True,
+        "attentionSource": "fixed_emotion_policy",
+        "attentionConfidence": None,
+    }
+
+
 def analyze_frame_payload(data):
     student_id = data.get("studentId", "unknown")
     student_key = f"{data.get('sessionId', 'default')}:{student_id}"
+    include_landmarks = INCLUDE_LANDMARKS or bool(data.get("includeLandmarks"))
     image = decode_base64_image(data.get("image", ""))
 
     if image is None:
@@ -625,40 +1288,22 @@ def analyze_frame_payload(data):
 
     presence_history[student_key].append("present")
     head_pose = estimate_head_pose(landmarks, image.shape)
-    face_crop = crop_face_from_box(image, face_box)
-    emotion, confidence, emotion_scores, emotion_source = choose_emotion_result(
+    face_crop = None
+    if not FAST_LANDMARK_EMOTION:
+        face_crop = crop_aligned_face_from_landmarks(image, landmarks)
+        if face_crop is None:
+            face_crop = crop_face_from_box(image, face_box)
+    emotion, confidence, emotion_scores, emotion_source, eye_state = choose_emotion_result(
         face_crop,
         blendshapes,
         student_key,
     )
-    focused_by_pose = head_pose["is_frontal"]
-    focused_by_emotion = emotion not in UNFOCUSED_EMOTIONS or confidence < NEGATIVE_EMOTION_MIN_CONFIDENCE
-    status, attention_level, is_focused, attention_source = decide_attention_from_rules(
-        head_pose,
-        emotion,
-        confidence,
-    )
-    model_attention = predict_attention_with_model(head_pose, face_box, blendshapes)
-    (
-        status,
-        attention_level,
-        is_focused,
-        attention_source,
-        attention_confidence,
-    ) = apply_model_attention(
-        status,
-        attention_level,
-        is_focused,
-        model_attention,
-        focused_by_pose,
-        focused_by_emotion,
-    )
-    status, attention_level, is_focused = stabilize_attention(
-        student_key,
-        status,
-        attention_level,
-        is_focused,
-    )
+    fixed_attention = decide_fixed_attention_policy(emotion, eye_state)
+    status = fixed_attention["status"]
+    attention_level = fixed_attention["attentionLevel"]
+    is_focused = fixed_attention["isFocused"]
+    attention_source = fixed_attention["attentionSource"]
+    attention_confidence = fixed_attention["attentionConfidence"]
     attention_label = {
         "focused": "T\u1eadp trung",
         "unfocused": "Kh\u00f4ng t\u1eadp trung",
@@ -684,20 +1329,22 @@ def analyze_frame_payload(data):
         "isFocused": is_focused,
         "confidence": confidence,
         "emotionScores": emotion_scores,
+        "eyeState": eye_state,
         "blendshapes": blendshapes,
         "faceBox": face_box,
         "headPose": head_pose,
-        "landmarks": [
+        "landmarkCount": len(landmarks),
+        "reason": "ok",
+    }
+    if include_landmarks:
+        response["landmarks"] = [
             {
                 "x": point["x"],
                 "y": point["y"],
                 "z": point["z"],
             }
             for point in landmarks
-        ],
-        "landmarkCount": len(landmarks),
-        "reason": "ok",
-    }
+        ]
     last_present_response[student_key] = response
     return response
 
@@ -751,10 +1398,18 @@ def health():
             "status": "ok",
             "engagementModelLoaded": engagement_model_artifact is not None,
             "emotionModelLoaded": emotion_model_artifact is not None,
+            "eyeStateModelLoaded": eye_state_model_artifact is not None,
+            "emotionCnnLoaded": emotion_cnn_artifact is not None,
+            "eyeStateCnnLoaded": eye_state_cnn_artifact is not None,
             "deepfaceAvailable": DEEPFACE_AVAILABLE,
             "deepfaceEnabled": USE_DEEPFACE,
+            "fastLandmarkEmotion": FAST_LANDMARK_EMOTION,
+            "landmarkRunningMode": "VIDEO",
             "engagementModelPath": str(ENGAGEMENT_MODEL_PATH),
             "emotionModelPath": str(EMOTION_MODEL_PATH),
+            "eyeStateModelPath": str(EYE_STATE_MODEL_PATH),
+            "emotionCnnModelPath": str(EMOTION_CNN_MODEL_PATH),
+            "eyeStateCnnModelPath": str(EYE_STATE_CNN_MODEL_PATH),
         }
     )
 

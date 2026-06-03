@@ -9,6 +9,20 @@ import { sendResponse } from "../../common/utils/response.util";
 import { asyncHandler } from "../../common/utils/async-handler.util";
 
 export const emotionsController = {
+  analyzeStudentFrame: asyncHandler(async (req: Request, res: Response) => {
+    if (req.user?.role !== "STUDENT") {
+      return sendResponse(res, HTTP_STATUS.FORBIDDEN, MESSAGES.FORBIDDEN);
+    }
+
+    const result = await emotionsService.analyzeStudentFrame(
+      req.params.sessionId,
+      req.user.id,
+      req.body,
+    );
+
+    return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
+  }),
+
   createLog: asyncHandler(async (req: Request, res: Response) => {
     const result = await emotionsService.createLog(req.body);
 
