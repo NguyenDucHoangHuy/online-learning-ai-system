@@ -916,7 +916,7 @@ def build_absent_response(reason):
     response = {
         "presence": "absent",
         "status": "absent",
-        "emotion": "no_face",
+        "emotion": "absent",
         "emotionLabel": "vắng mặt",
         "attentionLabel": "Vắng mặt",
         "isFocused": False,

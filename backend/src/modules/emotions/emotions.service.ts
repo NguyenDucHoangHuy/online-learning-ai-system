@@ -102,6 +102,8 @@ interface AiStudentAnalysis {
 const mapEmotionToDb = (emotion: string): EmotionType => {
   const normalized = emotion.trim().toLowerCase();
 
+  if (normalized === "absent" || normalized === "no_face")
+    return EmotionType.ABSENT;
   if (normalized === "happy") return EmotionType.HAPPY;
   if (normalized === "sad" || normalized === "sleepy") return EmotionType.SAD;
   if (normalized === "angry") return EmotionType.ANGRY;

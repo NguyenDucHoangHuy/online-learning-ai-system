@@ -2,6 +2,16 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
@@ -17,6 +27,7 @@ import { api } from "../../lib/axios";
 import { formatDate } from "../../utils/date";
 
 type EmotionType =
+  | "ABSENT"
   | "HAPPY"
   | "SAD"
   | "ANGRY"
@@ -113,6 +124,7 @@ interface SessionReport {
 type ReportStudent = SessionReport["students"][number];
 
 const emotionLabel: Record<EmotionType, string> = {
+  ABSENT: "Absent",
   HAPPY: "Happy",
   SAD: "Sleepy/Sad",
   ANGRY: "Angry",
@@ -135,6 +147,7 @@ const attentionBadgeClass: Record<AttentionLevel, string> = {
 };
 
 const emotionBadgeClass: Record<EmotionType, string> = {
+  ABSENT: "bg-slate-100 text-slate-700 border-slate-200",
   HAPPY: "bg-emerald-50 text-emerald-700 border-emerald-100",
   NEUTRAL: "bg-sky-50 text-sky-700 border-sky-100",
   SAD: "bg-rose-50 text-rose-700 border-rose-100",
@@ -177,33 +190,6 @@ const formatDuration = (
   const minutes = totalMinutes % 60;
 
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-};
-
-const buildLinePoints = (timeline: SessionReport["timeline"]) => {
-  const points = timeline.length
-    ? timeline
-    : [{ minute: 0, averageAttention: 0, logCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 }];
-  const maxMinute = Math.max(...points.map((point) => point.minute), 1);
-
-  return points
-    .map((point) => {
-      const x = (point.minute / maxMinute) * 520;
-      const y = 150 - (clampPercent(point.averageAttention) / 100) * 140;
-      return `${x},${y}`;
-    })
-    .join(" ");
-};
-
-const buildStudentLinePoints = (timeline: ReportStudent["timeline"], maxMinute: number) => {
-  if (!timeline.length) return "";
-
-  return timeline
-    .map((point) => {
-      const x = (point.minute / Math.max(maxMinute, 1)) * 520;
-      const y = 150 - (clampPercent(point.averageAttention) / 100) * 140;
-      return `${x},${y}`;
-    })
-    .join(" ");
 };
 
 const formatTime = (value: string) =>
@@ -280,19 +266,29 @@ export default function SessionReportPage() {
     },
   });
 
-  const linePoints = useMemo(
-    () => buildLinePoints(report?.timeline ?? []),
-    [report?.timeline],
-  );
-  const maxTimelineMinute = useMemo(() => {
-    const timelineMinutes = report?.timeline.map((point) => point.minute) ?? [];
-    const studentMinutes =
-      report?.students.flatMap((student) =>
-        student.timeline.map((point) => point.minute),
-      ) ?? [];
+  const engagementChartData = useMemo(() => {
+    if (!report) return [];
 
-    return Math.max(...timelineMinutes, ...studentMinutes, 1);
-  }, [report?.students, report?.timeline]);
+    const rows = new Map<number, Record<string, number>>();
+    const ensureRow = (minute: number): Record<string, number> => {
+      const existing = rows.get(minute);
+      if (existing) return existing;
+      const row: Record<string, number> = { minute };
+      rows.set(minute, row);
+      return row;
+    };
+
+    report.timeline.forEach((point) => {
+      ensureRow(point.minute).average = point.averageAttention;
+    });
+    report.students.forEach((student, index) => {
+      student.timeline.forEach((point) => {
+        ensureRow(point.minute)[`student_${index}`] = point.averageAttention;
+      });
+    });
+
+    return Array.from(rows.values()).sort((a, b) => a.minute - b.minute);
+  }, [report]);
   const dominantEmotion = report?.emotionDistribution.reduce(
     (best, item) => (item.count > best.count ? item : best),
     { emotion: "NEUTRAL" as EmotionType, count: 0, percentage: 0 },
@@ -457,86 +453,59 @@ export default function SessionReportPage() {
             </span>
           </div>
 
-          <div className="relative h-56 w-full">
-            <div className="absolute left-0 top-0 h-[188px] flex flex-col justify-between text-[10px] font-bold text-slate-400">
-              <span>100</span>
-              <span>75</span>
-              <span>50</span>
-              <span>25</span>
-              <span>0</span>
-            </div>
-            <div className="ml-8 h-full">
-              <svg
-                width="100%"
-                height="188"
-                viewBox="0 0 520 160"
-                preserveAspectRatio="none"
-                className="overflow-visible"
-              >
-                <line x1="0" y1="10" x2="520" y2="10" stroke="#e2e8f0" />
-                <line x1="0" y1="80" x2="520" y2="80" stroke="#e2e8f0" />
-                <line x1="0" y1="150" x2="520" y2="150" stroke="#e2e8f0" />
-                <polyline
-                  points={linePoints}
-                  fill="none"
-                  stroke="#0f172a"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {report.students.map((student, index) => {
-                  const points = buildStudentLinePoints(
-                    student.timeline,
-                    maxTimelineMinute,
-                  );
-                  if (!points) return null;
-
-                  return (
-                    <polyline
+          <div className="h-64 w-full">
+            {engagementChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={engagementChartData}
+                  margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
+                >
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" />
+                  <XAxis
+                    dataKey="minute"
+                    tickFormatter={(minute) => `${minute}m`}
+                    tick={{ fill: "#64748b", fontSize: 10, fontWeight: 700 }}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    ticks={[0, 25, 50, 75, 100]}
+                    tick={{ fill: "#64748b", fontSize: 10, fontWeight: 700 }}
+                  />
+                  <Tooltip
+                    formatter={(value) => [`${Math.round(Number(value))}%`]}
+                    labelFormatter={(minute) => `Minute ${minute}`}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="average"
+                    name="Average"
+                    stroke="#0f172a"
+                    strokeWidth={4}
+                    connectNulls
+                    dot={{ r: 4 }}
+                  />
+                  {report.students.map((student, index) => (
+                    <Line
                       key={student.participantId}
-                      points={points}
-                      fill="none"
+                      type="monotone"
+                      dataKey={`student_${index}`}
+                      name={student.fullName}
                       stroke={
                         studentLineColors[index % studentLineColors.length]
                       }
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity="0.82"
+                      strokeWidth={2}
+                      connectNulls
+                      dot={{ r: 3 }}
                     />
-                  );
-                })}
-              </svg>
-              <div className="mt-2 flex justify-between text-[10px] font-bold text-slate-400">
-                {(report.timeline.length ? report.timeline : [{ minute: 0 }]).map(
-                  (point) => (
-                    <span key={point.minute}>{point.minute}m</span>
-                  ),
-                )}
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-400">
+                No engagement data was recorded for this session.
               </div>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-              <span className="h-1.5 w-6 rounded-full bg-slate-900" />
-              Average
-            </div>
-            {report.students.map((student, index) => (
-              <div
-                key={student.participantId}
-                className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-500"
-              >
-                <span
-                  className="h-1.5 w-6 rounded-full"
-                  style={{
-                    backgroundColor:
-                      studentLineColors[index % studentLineColors.length],
-                  }}
-                />
-                {student.fullName}
-              </div>
-            ))}
+            )}
           </div>
         </div>
 

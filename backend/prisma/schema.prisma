@@ -28,6 +28,7 @@ enum JoinStatus {
 }
 
 enum EmotionType {
+  ABSENT
   HAPPY
   SAD
   ANGRY

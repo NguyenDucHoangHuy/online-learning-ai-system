@@ -36,3 +36,28 @@ export const useCreateClass = () => {
     },
   });
 };
+
+export const useUpdateClass = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: classesService.updateClass,
+    onSuccess: (_response, variables) => {
+      queryClient.invalidateQueries({ queryKey: CLASS_KEYS.all });
+      queryClient.invalidateQueries({
+        queryKey: CLASS_KEYS.detail(variables.classId),
+      });
+    },
+  });
+};
+
+export const useDeleteClass = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: classesService.deleteClass,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: CLASS_KEYS.all });
+    },
+  });
+};

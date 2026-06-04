@@ -19,6 +19,11 @@ export interface CreateClassPayload {
   description?: string;
 }
 
+export interface UpdateClassPayload {
+  name?: string;
+  description?: string;
+}
+
 export interface ClassResponse {
   success: boolean;
   data: ClassItem;

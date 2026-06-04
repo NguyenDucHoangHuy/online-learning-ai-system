@@ -16,14 +16,20 @@ import {
   Loader2,
   Copy,
   LogIn,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "../../components/ui/Button";
 import CreateClassModal from "./CreateClassModal";
+import EditClassModal from "./EditClassModal";
 import { ROUTES } from "../../constants";
 import { SESSION_STATUS } from "../../constants/session.constants";
 import { formatDate, formatTime } from "../../utils/date";
-import { useClasses } from "../../services/classes/classes.queries";
+import {
+  useClasses,
+  useDeleteClass,
+} from "../../services/classes/classes.queries";
 import { useClassSessions } from "../../services/sessions/sessions.queries";
 import { api } from "../../lib/axios"; // 🎯 BỔ SUNG: Nạp axios instance gọi API trực tiếp
 import { ClassItem } from "../../types/api";
@@ -46,6 +52,8 @@ const ManageClassesPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient(); // 🎯 KHOI TẠO ĐỂ LÀM SẠCH CACHE REST
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  const [openMenuClassId, setOpenMenuClassId] = useState<string | null>(null);
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sessionSearchTerm, setSessionSearchTerm] = useState("");
@@ -59,6 +67,7 @@ const ManageClassesPage: React.FC = () => {
     useClassSessions(selectedClass?.id || "");
 
   const sessionsList = sessionsResponse?.data || [];
+  const { mutate: deleteClass, isPending: isDeletingClass } = useDeleteClass();
 
   // 🔍 Logic lọc danh sách lớp học
   const normalizedClassSearch = normalizeSearchValue(searchTerm);
@@ -100,6 +109,25 @@ const ManageClassesPage: React.FC = () => {
     } catch (err) {
       console.error("Không thể sao chép mã phòng:", err);
     }
+  };
+
+  const handleDeleteClass = (classItem: ClassItem) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa lớp "${classItem.name}"? Tất cả buổi học và báo cáo liên quan cũng sẽ bị xóa.`,
+    );
+    if (!confirmed) return;
+
+    deleteClass(classItem.id, {
+      onSuccess: () => {
+        setOpenMenuClassId(null);
+        if (selectedClass?.id === classItem.id) setSelectedClass(null);
+      },
+      onError: (error) => {
+        alert(
+          error instanceof Error ? error.message : "Không thể xóa lớp học.",
+        );
+      },
+    });
   };
 
   /**
@@ -219,7 +247,20 @@ const ManageClassesPage: React.FC = () => {
                 <ClassCard
                   key={item.id}
                   item={item}
+                  isMenuOpen={openMenuClassId === item.id}
+                  isDeleting={isDeletingClass}
+                  onToggleMenu={() =>
+                    setOpenMenuClassId((current) =>
+                      current === item.id ? null : item.id,
+                    )
+                  }
+                  onEdit={() => {
+                    setOpenMenuClassId(null);
+                    setEditingClass(item);
+                  }}
+                  onDelete={() => handleDeleteClass(item)}
                   onClick={() => {
+                    setOpenMenuClassId(null);
                     setSelectedClass(item);
                     setSessionSearchTerm("");
                   }}
@@ -430,6 +471,10 @@ const ManageClassesPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
+      <EditClassModal
+        classItem={editingClass}
+        onClose={() => setEditingClass(null)}
+      />
     </div>
   );
 };
@@ -437,7 +482,20 @@ const ManageClassesPage: React.FC = () => {
 const ClassCard: React.FC<{
   item: ClassItem;
   onClick: () => void;
-}> = ({ item, onClick }) => (
+  isMenuOpen: boolean;
+  isDeleting: boolean;
+  onToggleMenu: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({
+  item,
+  onClick,
+  isMenuOpen,
+  isDeleting,
+  onToggleMenu,
+  onEdit,
+  onDelete,
+}) => (
   <div
     onClick={onClick}
     className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col justify-between h-[340px] relative hover:shadow-lg hover:border-blue-200 hover:-translate-y-1.5 transition-all duration-300 group cursor-pointer"
@@ -450,11 +508,41 @@ const ClassCard: React.FC<{
         <button
           onClick={(e) => {
             e.stopPropagation();
+            onToggleMenu();
           }}
+          aria-label={`Mở menu ${item.name}`}
+          aria-expanded={isMenuOpen}
           className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
         >
           <MoreVertical size={24} />
         </button>
+        {isMenuOpen && (
+          <div
+            className="absolute right-7 top-20 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              <Pencil size={15} /> Chỉnh sửa
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={onDelete}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Trash2 size={15} />
+              )}
+              Xóa lớp
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="text-[10px] font-bold text-blue-600 tracking-wider mb-1 uppercase">
