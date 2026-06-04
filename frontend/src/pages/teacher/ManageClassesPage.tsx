@@ -39,12 +39,16 @@ interface ClassSessionItem {
   endedAt: string | null;
 }
 
+const normalizeSearchValue = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase();
+
 const ManageClassesPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient(); // 🎯 KHOI TẠO ĐỂ LÀM SẠCH CACHE REST
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [sessionSearchTerm, setSessionSearchTerm] = useState("");
 
   // 📡 Gọi API lấy danh sách lớp học
   const { data: classesResponse, isLoading: isClassesLoading } = useClasses();
@@ -56,11 +60,39 @@ const ManageClassesPage: React.FC = () => {
 
   const sessionsList = sessionsResponse?.data || [];
 
-  const filteredClasses = classesList.filter(
-    (item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.code.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  // 🔍 Logic lọc danh sách lớp học
+  const normalizedClassSearch = normalizeSearchValue(searchTerm);
+  const filteredClasses = normalizedClassSearch
+    ? classesList.filter((item) => {
+        const searchableText = [
+          item.name,
+          item.code,
+          item.description,
+          item.id,
+        ]
+          .map(normalizeSearchValue)
+          .join(" ");
+
+        return searchableText.includes(normalizedClassSearch);
+      })
+    : classesList;
+
+  // 🔍 Logic lọc danh sách buổi học
+  const normalizedSessionSearch = normalizeSearchValue(sessionSearchTerm);
+  const filteredSessions = normalizedSessionSearch
+    ? sessionsList.filter((session: ClassSessionItem) => {
+        const searchableText = [
+          session.title,
+          session.sessionCode,
+          session.status,
+          session.id,
+        ]
+          .map(normalizeSearchValue)
+          .join(" ");
+
+        return searchableText.includes(normalizedSessionSearch);
+      })
+    : sessionsList;
 
   const handleCopyCode = async (code: string) => {
     try {
@@ -182,11 +214,15 @@ const ManageClassesPage: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+              {/* 🎯 ĐÃ SỬA: Thay thế classesList bằng filteredClasses để hiển thị kết quả tìm kiếm */}
               {filteredClasses.map((item) => (
                 <ClassCard
                   key={item.id}
                   item={item}
-                  onClick={() => setSelectedClass(item)}
+                  onClick={() => {
+                    setSelectedClass(item);
+                    setSessionSearchTerm("");
+                  }}
                 />
               ))}
             </div>
@@ -234,9 +270,23 @@ const ManageClassesPage: React.FC = () => {
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-900">
               Sessions List
               <span className="bg-slate-100 text-slate-600 text-xs py-1 px-2.5 rounded-lg font-bold">
-                {isSessionsLoading ? "..." : sessionsList.length}
+                {isSessionsLoading ? "..." : filteredSessions.length}
               </span>
             </h3>
+
+            <div className="relative mb-6 max-w-lg">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                size={18}
+              />
+              <input
+                type="text"
+                value={sessionSearchTerm}
+                onChange={(e) => setSessionSearchTerm(e.target.value)}
+                placeholder="Tìm buổi học theo tên hoặc mã phòng..."
+                className="w-full pl-12 pr-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 placeholder:text-slate-400 text-sm font-semibold transition-all"
+              />
+            </div>
 
             {isSessionsLoading ? (
               <div className="flex justify-center py-12">
@@ -258,9 +308,18 @@ const ManageClassesPage: React.FC = () => {
                   Create First Session
                 </Button>
               </div>
+            ) : filteredSessions.length === 0 ? (
+              <>
+              {/* 🎯 ĐÃ TỐI ƯU: Check filteredSessions trước để trả ra kết quả "Không tìm thấy" chuẩn xác */}
+              <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <p className="text-slate-500 font-medium">
+                  Không tìm thấy buổi học nào theo tên hoặc mã phòng này.
+                </p>
+              </div>
+              </>
             ) : (
               <div className="flex flex-col gap-4">
-                {sessionsList.map((session: ClassSessionItem) => {
+                {filteredSessions.map((session: ClassSessionItem) => {
                   const isLiveActive = session.status === SESSION_STATUS.ACTIVE;
                   const isLiveWaiting =
                     session.status === SESSION_STATUS.WAITING;
@@ -269,7 +328,6 @@ const ManageClassesPage: React.FC = () => {
                   return (
                     <div
                       key={session.id}
-                      // 🎯 ĐÃ SỬA: Chuyển hướng xử lý click mảng bọc qua hàm handleEnterLiveRoom bảo vệ workflow
                       onClick={() => canEnter && handleEnterLiveRoom(session)}
                       className={`group flex flex-col xl:flex-row xl:items-center justify-between p-6 rounded-2xl border transition-all duration-300 gap-4 ${
                         canEnter
@@ -349,7 +407,6 @@ const ManageClassesPage: React.FC = () => {
 
                         {canEnter && (
                           <button
-                            // 🎯 ĐÃ SỬA: Chuyển hướng xử lý click nút qua hàm bảo vệ workflow đồng bộ
                             onClick={(e) => {
                               e.stopPropagation();
                               handleEnterLiveRoom(session);

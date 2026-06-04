@@ -43,7 +43,10 @@ export const emotionsController = {
   }),
 
   getSessionReport: asyncHandler(async (req: Request, res: Response) => {
-    const result = await emotionsService.getSessionReport(req.params.sessionId);
+    const result = await emotionsService.getSessionReport(
+      req.params.sessionId,
+      req.user,
+    );
 
     return sendResponse(res, HTTP_STATUS.OK, MESSAGES.SUCCESS, result);
   }),

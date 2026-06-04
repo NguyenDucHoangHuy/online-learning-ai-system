@@ -8,6 +8,10 @@ export const SOCKET_EVENTS = {
   SESSION_LEAVE: "session:leave",
   SESSION_ENDED: "session:ended",
   MEDIA_STATE: "media:state",
+  SCREEN_SHARE_START: "screen-share:start",
+  SCREEN_SHARE_FRAME: "screen-share:frame",
+  SCREEN_SHARE_STOP: "screen-share:stop",
+  HAND_RAISE: "hand:raise",
 
   // Participant — Server → Student private room
   PARTICIPANT_JOINED: "participant:joined",

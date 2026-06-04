@@ -2,13 +2,21 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { User } from "../types/common/user.types";
 
+export const AUTH_STORAGE_KEY = "auth-storage";
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null; // <-- Lưu thêm để phục vụ luồng Auto-Refresh
+  refreshToken: string | null;
   setAuth: (user: User, accessToken: string, refreshToken: string) => void;
   clearAuth: () => void;
+  logoutLocal: () => void;
 }
+
+const clearStoredAuth = () => {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  sessionStorage.clear();
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -30,9 +38,18 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
         }),
+
+      logoutLocal: () => {
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+        });
+        clearStoredAuth();
+      },
     }),
     {
-      name: "auth-storage", // Tên định danh của Key nằm dưới Application LocalStorage
+      name: AUTH_STORAGE_KEY,
     },
   ),
 );

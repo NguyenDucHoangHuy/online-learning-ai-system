@@ -1,233 +1,587 @@
-// src/pages/teacher/SessionReportPage.tsx
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
+  BarChart3,
   Download,
+  Loader2,
   Smile,
-  Zap,
+  X,
   Users,
-  ChevronRight,
+  Zap,
 } from "lucide-react";
 
-const participationData = [
-  {
-    id: 1,
-    fullName: "Quốc Anh",
-    duration: "60/60m",
-    attention: 94,
-    primaryState: "SATISFIED",
-  },
-  {
-    id: 2,
-    fullName: "Công Đức",
-    duration: "55/60m",
-    attention: 72,
-    primaryState: "NEUTRAL",
-  },
-  {
-    id: 3,
-    fullName: "Nguyễn Văn A",
-    duration: "60/60m",
-    attention: 45,
-    primaryState: "DISTRACTED",
-  },
-  {
-    id: 4,
-    fullName: "Hoàng Huy",
-    duration: "42/60m",
-    attention: 89,
-    primaryState: "ENGAGED",
-  },
+import { api } from "../../lib/axios";
+import { formatDate } from "../../utils/date";
+
+type EmotionType =
+  | "HAPPY"
+  | "SAD"
+  | "ANGRY"
+  | "NEUTRAL"
+  | "SURPRISED"
+  | "FEARFUL"
+  | "DISGUSTED";
+
+type AttentionLevel = "HIGH" | "MEDIUM" | "LOW";
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+interface SessionReport {
+  session: {
+    id: string;
+    title: string;
+    sessionCode: string;
+    status: string;
+    startedAt: string | null;
+    endedAt: string | null;
+    createdAt: string;
+    class: {
+      id: string;
+      name: string;
+      teacherId: string;
+    };
+  };
+  totalLogs: number;
+  averageAttention: number;
+  weightedAttention: number;
+  highAttentionCount: number;
+  lowAttentionCount: number;
+  participantCount: number;
+  analyzedParticipantCount: number;
+  emotionDistribution: Array<{
+    emotion: EmotionType;
+    count: number;
+    percentage: number;
+  }>;
+  attentionDistribution: Array<{
+    attentionLevel: AttentionLevel;
+    count: number;
+    percentage: number;
+  }>;
+  timeline: Array<{
+    minute: number;
+    averageAttention: number;
+    logCount: number;
+    highCount: number;
+    mediumCount: number;
+    lowCount: number;
+  }>;
+  students: Array<{
+    participantId: string;
+    studentId: string;
+    fullName: string;
+    email: string;
+    joinedAt: string | null;
+    leftAt: string | null;
+    logCount: number;
+    focusedLogCount: number;
+    lowAttentionCount: number;
+    attentionPercentage: number;
+    weightedAttention: number;
+    primaryEmotion: EmotionType;
+    latestEmotion: EmotionType | null;
+    latestAttentionLevel: AttentionLevel | null;
+    latestRecordedAt: string | null;
+    timeline: Array<{
+      minute: number;
+      averageAttention: number;
+      logCount: number;
+      highCount: number;
+      mediumCount: number;
+      lowCount: number;
+    }>;
+    logs: Array<{
+      index: number;
+      id: string;
+      emotion: EmotionType;
+      confidence: number;
+      attentionLevel: AttentionLevel;
+      attentionScore: number;
+      recordedAt: string;
+      minute: number | null;
+    }>;
+  }>;
+}
+
+type ReportStudent = SessionReport["students"][number];
+
+const emotionLabel: Record<EmotionType, string> = {
+  HAPPY: "Happy",
+  SAD: "Sleepy/Sad",
+  ANGRY: "Angry",
+  NEUTRAL: "Neutral",
+  SURPRISED: "Surprised",
+  FEARFUL: "Fearful",
+  DISGUSTED: "Disgusted",
+};
+
+const attentionLabel: Record<AttentionLevel, string> = {
+  HIGH: "Focused",
+  MEDIUM: "Normal",
+  LOW: "Unfocused",
+};
+
+const attentionBadgeClass: Record<AttentionLevel, string> = {
+  HIGH: "bg-emerald-50 text-emerald-700 border-emerald-100",
+  MEDIUM: "bg-sky-50 text-sky-700 border-sky-100",
+  LOW: "bg-rose-50 text-rose-700 border-rose-100",
+};
+
+const emotionBadgeClass: Record<EmotionType, string> = {
+  HAPPY: "bg-emerald-50 text-emerald-700 border-emerald-100",
+  NEUTRAL: "bg-sky-50 text-sky-700 border-sky-100",
+  SAD: "bg-rose-50 text-rose-700 border-rose-100",
+  ANGRY: "bg-orange-50 text-orange-700 border-orange-100",
+  SURPRISED: "bg-amber-50 text-amber-700 border-amber-100",
+  FEARFUL: "bg-violet-50 text-violet-700 border-violet-100",
+  DISGUSTED: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100",
+};
+
+const studentLineColors = [
+  "#0284c7",
+  "#059669",
+  "#dc2626",
+  "#7c3aed",
+  "#d97706",
+  "#0891b2",
+  "#be185d",
+  "#16a34a",
 ];
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
+
+const formatPercent = (value: number) => `${Math.round(value)}%`;
+
+const formatDuration = (
+  startAt: string | null,
+  endAt: string | null,
+  fallbackEndAt: string | null,
+) => {
+  if (!startAt) return "0m";
+
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt ?? fallbackEndAt ?? Date.now()).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return "0m";
+  }
+
+  const totalMinutes = Math.round((end - start) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+};
+
+const buildLinePoints = (timeline: SessionReport["timeline"]) => {
+  const points = timeline.length
+    ? timeline
+    : [{ minute: 0, averageAttention: 0, logCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 }];
+  const maxMinute = Math.max(...points.map((point) => point.minute), 1);
+
+  return points
+    .map((point) => {
+      const x = (point.minute / maxMinute) * 520;
+      const y = 150 - (clampPercent(point.averageAttention) / 100) * 140;
+      return `${x},${y}`;
+    })
+    .join(" ");
+};
+
+const buildStudentLinePoints = (timeline: ReportStudent["timeline"], maxMinute: number) => {
+  if (!timeline.length) return "";
+
+  return timeline
+    .map((point) => {
+      const x = (point.minute / Math.max(maxMinute, 1)) * 520;
+      const y = 150 - (clampPercent(point.averageAttention) / 100) * 140;
+      return `${x},${y}`;
+    })
+    .join(" ");
+};
+
+const formatTime = (value: string) =>
+  new Date(value).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+const downloadReportCsv = (report: SessionReport) => {
+  const rows = [
+    [
+      "Student",
+      "Email",
+      "Attention Percentage",
+      "Weighted Attention",
+      "Duration",
+      "Primary Emotion",
+      "Latest Attention",
+      "Total Logs",
+      "Low Attention Logs",
+    ],
+    ...report.students.map((student) => [
+      student.fullName,
+      student.email,
+      String(student.attentionPercentage),
+      String(student.weightedAttention),
+      formatDuration(
+        student.joinedAt,
+        student.leftAt,
+        report.session.endedAt ?? student.latestRecordedAt,
+      ),
+      student.primaryEmotion,
+      student.latestAttentionLevel ?? "",
+      String(student.logCount),
+      String(student.lowAttentionCount),
+    ]),
+  ];
+  const csv = rows
+    .map((row) =>
+      row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","),
+    )
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${report.session.title || "session"}-report.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 export default function SessionReportPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [selectedStudent, setSelectedStudent] = useState<ReportStudent | null>(
+    null,
+  );
+  const sessionId = searchParams.get("sessionId");
+
+  const {
+    data: report,
+    isLoading,
+    isError,
+    error,
+  } = useQuery<SessionReport>({
+    queryKey: ["session-report", sessionId],
+    enabled: Boolean(sessionId),
+    queryFn: async () => {
+      const response = (await api.get<ApiEnvelope<SessionReport>>(
+        `/emotions/sessions/${sessionId}/emotions/report`,
+      )) as unknown as ApiEnvelope<SessionReport>;
+      return response.data;
+    },
+  });
+
+  const linePoints = useMemo(
+    () => buildLinePoints(report?.timeline ?? []),
+    [report?.timeline],
+  );
+  const maxTimelineMinute = useMemo(() => {
+    const timelineMinutes = report?.timeline.map((point) => point.minute) ?? [];
+    const studentMinutes =
+      report?.students.flatMap((student) =>
+        student.timeline.map((point) => point.minute),
+      ) ?? [];
+
+    return Math.max(...timelineMinutes, ...studentMinutes, 1);
+  }, [report?.students, report?.timeline]);
+  const dominantEmotion = report?.emotionDistribution.reduce(
+    (best, item) => (item.count > best.count ? item : best),
+    { emotion: "NEUTRAL" as EmotionType, count: 0, percentage: 0 },
+  );
+  const lowAttentionRate =
+    report && report.totalLogs > 0
+      ? (report.lowAttentionCount / report.totalLogs) * 100
+      : 0;
+
+  if (!sessionId) {
+    return (
+      <div className="max-w-4xl mx-auto bg-white border border-slate-200 rounded-xl p-8 text-center">
+        <AlertTriangle className="mx-auto text-amber-500 mb-4" size={36} />
+        <h1 className="text-xl font-bold text-slate-900 mb-2">
+          Missing session report
+        </h1>
+        <p className="text-sm text-slate-500 mb-6">
+          Please open this page from Session History so the sessionId is
+          included.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-xs font-bold tracking-widest text-white hover:bg-slate-800"
+        >
+          <ArrowLeft size={16} />
+          GO BACK
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-3 text-slate-500">
+        <Loader2 className="animate-spin text-blue-600" size={44} />
+        <p className="font-bold text-xs uppercase tracking-widest text-slate-400">
+          Loading AI session report...
+        </p>
+      </div>
+    );
+  }
+
+  if (isError || !report) {
+    return (
+      <div className="max-w-4xl mx-auto bg-white border border-rose-200 rounded-xl p-8 text-center">
+        <AlertTriangle className="mx-auto text-rose-500 mb-4" size={36} />
+        <h1 className="text-xl font-bold text-slate-900 mb-2">
+          Cannot load report
+        </h1>
+        <p className="text-sm text-slate-500 mb-6">
+          {error instanceof Error ? error.message : "Please try again later."}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-xs font-bold tracking-widest text-white hover:bg-slate-800"
+        >
+          <ArrowLeft size={16} />
+          GO BACK
+        </button>
+      </div>
+    );
+  }
 
   return (
-    // Không cần bọc min-h-screen, bg-slate-50 hay ml-[270px] vì TeacherLayout đã lo việc đó
     <div className="max-w-7xl mx-auto">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
         <div className="flex items-center gap-5">
           <button
+            type="button"
             onClick={() => navigate(-1)}
-            className="w-12 h-12 bg-white border border-slate-200 rounded-2xl flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+            className="w-11 h-11 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+            title="Back"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Session Report
+              {report.session.title}
             </h1>
             <p className="text-slate-500 font-medium mt-1">
-              Post-class analysis and emotional engagement metrics
+              {report.session.class.name} - Code {report.session.sessionCode} -
+              {formatDate(report.session.createdAt)}
             </p>
           </div>
         </div>
 
         <button
-          onClick={() => alert("Exporting Data...")}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3.5 rounded-xl text-xs font-bold tracking-widest transition-colors shadow-md shadow-slate-900/10"
+          type="button"
+          onClick={() => downloadReportCsv(report)}
+          className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-lg text-xs font-bold tracking-widest transition-colors shadow-md shadow-slate-900/10"
         >
           <Download size={16} />
-          EXPORT DETAILED DATA
+          EXPORT CSV
         </button>
       </div>
 
-      {/* TOP GRID (CHART & METRICS) */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-10">
-        {/* CHART CONTAINER */}
-        <div className="xl:col-span-2 bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col justify-between min-h-[360px]">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+          <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center mb-4">
+            <Zap size={20} />
+          </div>
+          <div className="text-3xl font-black text-slate-900">
+            {formatPercent(report.averageAttention)}
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-1">
+            Overall Focus
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+          <div className="w-10 h-10 bg-sky-50 text-sky-600 rounded-lg flex items-center justify-center mb-4">
+            <BarChart3 size={20} />
+          </div>
+          <div className="text-3xl font-black text-slate-900">
+            {formatPercent(report.weightedAttention)}
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-1">
+            Weighted Score
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+          <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-lg flex items-center justify-center mb-4">
+            <Users size={20} />
+          </div>
+          <div className="text-3xl font-black text-slate-900">
+            {report.analyzedParticipantCount}/{report.participantCount}
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-1">
+            Students Analyzed
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+          <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center mb-4">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="text-3xl font-black text-slate-900">
+            {formatPercent(lowAttentionRate)}
+          </div>
+          <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-1">
+            Unfocused Rate
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        <div className="xl:col-span-2 bg-white rounded-xl p-6 border border-slate-200 shadow-sm min-h-[340px]">
           <div className="flex justify-between items-start mb-6">
             <div>
               <h3 className="text-xl font-bold text-slate-900 mb-1">
                 Engagement Timeline
               </h3>
               <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">
-                Average Participant Attention
+                Average and per-student attention by 5-minute bucket
               </span>
             </div>
-            <span className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest">
-              AI TRACKING HISTORY
+            <span className="bg-sky-50 text-sky-700 px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest">
+              {report.totalLogs} LOGS
             </span>
           </div>
 
-          <div className="relative h-48 w-full mt-4 flex flex-col justify-end">
-            <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[10px] font-bold text-slate-400 pb-6">
+          <div className="relative h-56 w-full">
+            <div className="absolute left-0 top-0 h-[188px] flex flex-col justify-between text-[10px] font-bold text-slate-400">
               <span>100</span>
               <span>75</span>
               <span>50</span>
               <span>25</span>
               <span>0</span>
             </div>
-
-            <div className="ml-8 relative h-full">
+            <div className="ml-8 h-full">
               <svg
                 width="100%"
-                height="100%"
+                height="188"
                 viewBox="0 0 520 160"
                 preserveAspectRatio="none"
-                className="absolute bottom-6"
+                className="overflow-visible"
               >
-                <path
-                  d="M 0 110 C 60 80, 100 50, 160 50 C 220 50, 250 110, 300 90 C 350 70, 400 40, 520 70"
-                  stroke="#3b82f6"
-                  strokeWidth="4"
+                <line x1="0" y1="10" x2="520" y2="10" stroke="#e2e8f0" />
+                <line x1="0" y1="80" x2="520" y2="80" stroke="#e2e8f0" />
+                <line x1="0" y1="150" x2="520" y2="150" stroke="#e2e8f0" />
+                <polyline
+                  points={linePoints}
                   fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
-                <circle
-                  cx="0"
-                  cy="110"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="100"
-                  cy="75"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="160"
-                  cy="50"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="250"
-                  cy="95"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="330"
-                  cy="65"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="400"
-                  cy="50"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="520"
-                  cy="75"
-                  r="5"
-                  fill="#ffffff"
-                  stroke="#3b82f6"
-                  strokeWidth="3"
-                />
-              </svg>
+                {report.students.map((student, index) => {
+                  const points = buildStudentLinePoints(
+                    student.timeline,
+                    maxTimelineMinute,
+                  );
+                  if (!points) return null;
 
-              <div className="absolute bottom-0 w-full flex justify-between text-[10px] font-bold text-slate-400">
-                <span>0m</span>
-                <span>10m</span>
-                <span>20m</span>
-                <span>30m</span>
-                <span>40m</span>
-                <span>50m</span>
-                <span>60m</span>
+                  return (
+                    <polyline
+                      key={student.participantId}
+                      points={points}
+                      fill="none"
+                      stroke={
+                        studentLineColors[index % studentLineColors.length]
+                      }
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.82"
+                    />
+                  );
+                })}
+              </svg>
+              <div className="mt-2 flex justify-between text-[10px] font-bold text-slate-400">
+                {(report.timeline.length ? report.timeline : [{ minute: 0 }]).map(
+                  (point) => (
+                    <span key={point.minute}>{point.minute}m</span>
+                  ),
+                )}
               </div>
             </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+              <span className="h-1.5 w-6 rounded-full bg-slate-900" />
+              Average
+            </div>
+            {report.students.map((student, index) => (
+              <div
+                key={student.participantId}
+                className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-500"
+              >
+                <span
+                  className="h-1.5 w-6 rounded-full"
+                  style={{
+                    backgroundColor:
+                      studentLineColors[index % studentLineColors.length],
+                  }}
+                />
+                {student.fullName}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* METRICS CONTAINER */}
-        <div className="xl:col-span-1 flex flex-col gap-6">
-          <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex-1 flex flex-col justify-center">
-            <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center mb-4">
-              <Smile size={28} />
+        <div className="bg-slate-950 text-white rounded-xl p-6 shadow-xl">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-emerald-400">
+              <Smile size={20} />
             </div>
-            <h2 className="text-4xl font-black text-slate-900 mb-1">88.5%</h2>
-            <p className="text-[10px] font-bold text-slate-400 tracking-widest mb-5 uppercase">
-              Happiness Index
-            </p>
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-400 w-[88.5%] rounded-full"></div>
+            <div>
+              <h4 className="text-sm font-bold text-white">Emotion Summary</h4>
+              <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">
+                Dominant: {emotionLabel[dominantEmotion?.emotion ?? "NEUTRAL"]}
+              </p>
             </div>
           </div>
 
-          <div className="bg-slate-950 text-white rounded-3xl p-8 shadow-xl flex-1 flex flex-col justify-center relative overflow-hidden">
-            <div className="absolute -right-6 -top-6 text-slate-800 opacity-50">
-              <Zap size={100} />
-            </div>
-            <div className="flex items-center gap-4 mb-4 relative z-10">
-              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-blue-400">
-                <Zap size={20} />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white">AI OBSERVATION</h4>
-                <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase mt-0.5">
-                  Smart Analytics
-                </p>
-              </div>
-            </div>
-            <p className="text-sm leading-relaxed text-slate-300 font-medium italic relative z-10">
-              "Participation peaked exactly 20 minutes in during the live demo.
-              This suggests visual demonstrations significantly increase student
-              retention for this topic."
-            </p>
+          <div className="space-y-4">
+            {report.emotionDistribution
+              .filter((item) => item.count > 0)
+              .map((item) => (
+                <div key={item.emotion}>
+                  <div className="flex justify-between text-xs font-bold mb-2">
+                    <span>{emotionLabel[item.emotion]}</span>
+                    <span>{formatPercent(item.percentage)}</span>
+                  </div>
+                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-400 rounded-full"
+                      style={{ width: `${clampPercent(item.percentage)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+
+            {report.totalLogs === 0 && (
+              <p className="text-sm text-slate-400 font-medium">
+                No AI logs were recorded for this session yet.
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* TABLE SECTION */}
-      <div className="mb-6 flex items-center gap-3">
-        <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="p-2 bg-sky-100 text-sky-700 rounded-lg">
           <Users size={20} />
         </div>
         <h2 className="text-xl font-bold text-slate-900">
@@ -235,91 +589,243 @@ export default function SessionReportPage() {
         </h2>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/50">
-                <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase w-1/4">
-                  Full Name
+              <tr className="border-b border-slate-200 bg-slate-50/70">
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
+                  Student
                 </th>
-                <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase w-[15%]">
-                  Duration
-                </th>
-                <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase w-1/4">
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
                   Attention
                 </th>
-                <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase w-1/5">
-                  Primary State
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
+                  Duration
                 </th>
-                <th className="px-8 py-5 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase text-right">
-                  Insight
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
+                  Emotion
+                </th>
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase">
+                  Latest State
+                </th>
+                <th className="px-6 py-4 text-[10px] font-extrabold text-slate-400 tracking-widest uppercase text-right">
+                  Logs
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {participationData.map((item) => {
-                // Đổi màu badge động theo State
-                let badgeStyle = "bg-slate-100 text-slate-600";
-                if (item.primaryState === "SATISFIED")
-                  badgeStyle = "bg-emerald-50 text-emerald-600";
-                if (item.primaryState === "DISTRACTED")
-                  badgeStyle = "bg-rose-50 text-rose-600";
-                if (item.primaryState === "ENGAGED")
-                  badgeStyle = "bg-blue-50 text-blue-600";
-
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50/50 transition-colors group"
-                  >
-                    <td className="px-8 py-5 text-sm font-bold text-slate-900">
-                      {item.fullName}
-                    </td>
-                    <td className="px-8 py-5 text-sm font-semibold text-slate-600">
-                      {item.duration}
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-4">
-                        <span className="text-sm font-bold text-slate-900 w-8">
-                          {item.attention}%
-                        </span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              item.attention > 80
-                                ? "bg-emerald-400"
-                                : item.attention > 50
-                                  ? "bg-blue-400"
-                                  : "bg-rose-400"
-                            }`}
-                            style={{ width: `${item.attention}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <span
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${badgeStyle}`}
-                      >
-                        {item.primaryState}
+              {report.students.map((student) => (
+                <tr
+                  key={student.participantId}
+                  className="hover:bg-slate-50/60 transition-colors"
+                >
+                  <td className="px-6 py-5">
+                    <div className="text-sm font-bold text-slate-900">
+                      {student.fullName}
+                    </div>
+                    <div className="text-xs font-medium text-slate-400 mt-1">
+                      {student.email}
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 min-w-[220px]">
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm font-bold text-slate-900 w-10">
+                        {formatPercent(student.attentionPercentage)}
                       </span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      <button
-                        onClick={() => alert(`Inspecting ${item.fullName}`)}
-                        className="text-[10px] font-extrabold text-blue-600 tracking-widest flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            student.attentionPercentage >= 80
+                              ? "bg-emerald-400"
+                              : student.attentionPercentage >= 50
+                                ? "bg-sky-400"
+                                : "bg-rose-400"
+                          }`}
+                          style={{
+                            width: `${clampPercent(student.attentionPercentage)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-sm font-bold text-slate-700">
+                    {formatDuration(
+                      student.joinedAt,
+                      student.leftAt,
+                      report.session.endedAt ?? student.latestRecordedAt,
+                    )}
+                  </td>
+                  <td className="px-6 py-5">
+                    <span
+                      className={`inline-flex border px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${emotionBadgeClass[student.primaryEmotion]}`}
+                    >
+                      {emotionLabel[student.primaryEmotion]}
+                    </span>
+                  </td>
+                  <td className="px-6 py-5">
+                    {student.latestAttentionLevel ? (
+                      <span
+                        className={`inline-flex border px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${attentionBadgeClass[student.latestAttentionLevel]}`}
                       >
-                        INSPECT <ChevronRight size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                        {attentionLabel[student.latestAttentionLevel]}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-slate-400">
+                        No data
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStudent(student)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black tracking-widest text-sky-700 transition-colors hover:border-sky-200 hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-white"
+                      disabled={student.logCount === 0}
+                    >
+                      {student.logCount}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {report.students.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-sm font-semibold text-slate-400"
+                  >
+                    No approved students found for this session.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {selectedStudent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-4xl max-h-[86vh] overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">
+                  {selectedStudent.fullName}
+                </h3>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  {selectedStudent.logCount} AI logs -{" "}
+                  {formatPercent(selectedStudent.attentionPercentage)} focused
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStudent(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-[64vh] overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Focused Logs
+                  </p>
+                  <p className="mt-1 text-2xl font-black text-slate-900">
+                    {selectedStudent.focusedLogCount}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Low Attention
+                  </p>
+                  <p className="mt-1 text-2xl font-black text-rose-600">
+                    {selectedStudent.lowAttentionCount}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Primary Emotion
+                  </p>
+                  <p className="mt-2">
+                    <span
+                      className={`inline-flex border px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${emotionBadgeClass[selectedStudent.primaryEmotion]}`}
+                    >
+                      {emotionLabel[selectedStudent.primaryEmotion]}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        #
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Time
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Minute
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Emotion
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Attention
+                      </th>
+                      <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">
+                        Confidence
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedStudent.logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 text-xs font-bold text-slate-500">
+                          {log.index}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                          {formatTime(log.recordedAt)}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                          {log.minute !== null ? `${Math.round(log.minute)}m` : "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex border px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${emotionBadgeClass[log.emotion]}`}
+                          >
+                            {emotionLabel[log.emotion]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex border px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-widest ${attentionBadgeClass[log.attentionLevel]}`}
+                          >
+                            {attentionLabel[log.attentionLevel]} -{" "}
+                            {log.attentionScore}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">
+                          {formatPercent(log.confidence)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

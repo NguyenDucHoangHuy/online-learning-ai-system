@@ -16,6 +16,8 @@ import {
   LogOut,
   VideoOff,
   MicOff,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -68,6 +70,14 @@ interface StudentAiState extends StudentAttentionAnalysis {
   updatedAt: string;
 }
 
+interface RemoteScreenShareState {
+  userId: string;
+  role: string;
+  fullName?: string;
+  image: string;
+  capturedAt?: string;
+}
+
 export default function TeachingRoomPage() {
   const { sessionId = "" } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -108,6 +118,22 @@ export default function TeachingRoomPage() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const screenFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const screenFrameTimerRef = useRef<number | null>(null);
+  const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const [screenShareStream, setScreenShareStream] =
+    useState<MediaStream | null>(null);
+  const [isScreenShareExpanded, setIsScreenShareExpanded] = useState(false);
+  const [remoteScreenShares, setRemoteScreenShares] = useState<
+    Record<string, RemoteScreenShareState>
+  >({});
+  const [expandedRemoteScreenUserId, setExpandedRemoteScreenUserId] = useState<
+    string | null
+  >(null);
+  const [raisedHands, setRaisedHands] = useState<
+    Record<string, { fullName: string; updatedAt: string }>
+  >({});
   const isLocalMediaReady = !!localStream;
 
   const { remoteStreams, initiateCall } = useWebRTCSignaling({
@@ -315,6 +341,126 @@ export default function TeachingRoomPage() {
     };
   }, [socket, isConnected]);
 
+  useEffect(() => {
+    if (!socket || !isConnected || !sessionId || !user?.id) return;
+
+    const resolveParticipantName = (userId: string, fallback?: string) => {
+      const participant = onlineParticipants.find(
+        (item) =>
+          item.studentId === userId ||
+          item.id === userId ||
+          item.student?.id === userId,
+      );
+
+      return (
+        fallback ||
+        participant?.student?.fullName ||
+        (participant as ParticipantItem & { fullName?: string })?.fullName ||
+        "Hoc vien"
+      );
+    };
+
+    const handleScreenShareStart = (payload: {
+      sessionId: string;
+      userId: string;
+      role: string;
+      fullName?: string;
+    }) => {
+      if (payload.sessionId !== sessionId || payload.userId === user.id) return;
+
+      setRemoteScreenShares((prev) => ({
+        ...prev,
+        [payload.userId]: {
+          userId: payload.userId,
+          role: payload.role,
+          fullName: resolveParticipantName(payload.userId, payload.fullName),
+          image: prev[payload.userId]?.image ?? "",
+        },
+      }));
+      setExpandedRemoteScreenUserId(payload.userId);
+    };
+
+    const handleScreenShareFrame = (payload: {
+      sessionId: string;
+      userId: string;
+      role: string;
+      fullName?: string;
+      image: string;
+      capturedAt?: string;
+    }) => {
+      if (payload.sessionId !== sessionId || payload.userId === user.id) return;
+
+      setRemoteScreenShares((prev) => ({
+        ...prev,
+        [payload.userId]: {
+          userId: payload.userId,
+          role: payload.role,
+          fullName: resolveParticipantName(payload.userId, payload.fullName),
+          image: payload.image,
+          capturedAt: payload.capturedAt,
+        },
+      }));
+    };
+
+    const handleScreenShareStop = (payload: {
+      sessionId?: string;
+      userId: string;
+    }) => {
+      if (payload.sessionId && payload.sessionId !== sessionId) return;
+
+      setRemoteScreenShares((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
+      setExpandedRemoteScreenUserId((current) =>
+        current === payload.userId ? null : current,
+      );
+    };
+
+    const handleHandRaise = (payload: {
+      sessionId: string;
+      userId: string;
+      role: string;
+      fullName?: string;
+      isRaised: boolean;
+      updatedAt?: string;
+    }) => {
+      if (
+        payload.sessionId !== sessionId ||
+        payload.userId === user.id ||
+        payload.role !== "STUDENT"
+      ) {
+        return;
+      }
+
+      setRaisedHands((prev) => {
+        const next = { ...prev };
+        if (payload.isRaised) {
+          next[payload.userId] = {
+            fullName: resolveParticipantName(payload.userId, payload.fullName),
+            updatedAt: payload.updatedAt || new Date().toISOString(),
+          };
+        } else {
+          delete next[payload.userId];
+        }
+        return next;
+      });
+    };
+
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_START, handleScreenShareStart);
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_FRAME, handleScreenShareFrame);
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_STOP, handleScreenShareStop);
+    socket.on(SOCKET_EVENTS.HAND_RAISE, handleHandRaise);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_START, handleScreenShareStart);
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_FRAME, handleScreenShareFrame);
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_STOP, handleScreenShareStop);
+      socket.off(SOCKET_EVENTS.HAND_RAISE, handleHandRaise);
+    };
+  }, [socket, isConnected, sessionId, user?.id, onlineParticipants]);
+
   const { data: rawPendingData } = useQuery<ParticipantItem[]>({
     queryKey: ["session-participants-pending", sessionId],
     queryFn: async () => {
@@ -441,6 +587,13 @@ export default function TeachingRoomPage() {
       videoRef.current.srcObject = isVideoOff ? null : localStream;
     }
   }, [localStream, isVideoOff]);
+
+  useEffect(() => {
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = screenShareStream;
+    }
+    screenShareStreamRef.current = screenShareStream;
+  }, [screenShareStream]);
 
   // Luồng kết nối danh Snapshot và Socket Real-time
   useEffect(() => {
@@ -624,6 +777,19 @@ export default function TeachingRoomPage() {
         delete next[payload.userId];
         return next;
       });
+      setRemoteScreenShares((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
+      setExpandedRemoteScreenUserId((current) =>
+        current === payload.userId ? null : current,
+      );
+      setRaisedHands((prev) => {
+        const next = { ...prev };
+        delete next[payload.userId];
+        return next;
+      });
     };
 
     socket.on(SOCKET_EVENTS.PARTICIPANT_LEFT, handleLeavingParticipant);
@@ -641,6 +807,110 @@ export default function TeachingRoomPage() {
     isLocalMediaReady,
     initiateCall,
   ]);
+
+  const stopScreenShare = () => {
+    if (screenFrameTimerRef.current !== null) {
+      window.clearInterval(screenFrameTimerRef.current);
+      screenFrameTimerRef.current = null;
+    }
+
+    screenShareStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenShareStreamRef.current = null;
+    setScreenShareStream(null);
+    setIsScreenShareExpanded(false);
+
+    if (screenVideoRef.current) {
+      screenVideoRef.current.srcObject = null;
+    }
+
+    if (socket && isConnected) {
+      socket.emit(SOCKET_EVENTS.SCREEN_SHARE_STOP, { sessionId });
+    }
+  };
+
+  const startScreenShare = async () => {
+    if (!socket || !isConnected) {
+      alert("Socket chưa sẵn sàng, vui lòng thử lại sau vài giây.");
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 8,
+        },
+        audio: false,
+      });
+      const [screenTrack] = displayStream.getVideoTracks();
+
+      screenShareStreamRef.current = displayStream;
+      setScreenShareStream(displayStream);
+      setIsScreenShareExpanded(true);
+      socket.emit(SOCKET_EVENTS.SCREEN_SHARE_START, {
+        sessionId,
+        fullName: user?.fullName,
+      });
+
+      screenTrack.addEventListener("ended", stopScreenShare, { once: true });
+
+      window.setTimeout(() => {
+        if (!screenVideoRef.current) return;
+
+        const canvas =
+          screenFrameCanvasRef.current ?? document.createElement("canvas");
+        screenFrameCanvasRef.current = canvas;
+        const context = canvas.getContext("2d");
+        const publishFrame = () => {
+          const video = screenVideoRef.current;
+          if (
+            !video ||
+            !context ||
+            video.videoWidth === 0 ||
+            video.videoHeight === 0
+          ) {
+            return;
+          }
+
+          const targetWidth = 960;
+          const ratio = video.videoHeight / video.videoWidth;
+          canvas.width = targetWidth;
+          canvas.height = Math.round(targetWidth * ratio);
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          socket.emit(SOCKET_EVENTS.SCREEN_SHARE_FRAME, {
+            sessionId,
+            fullName: user?.fullName,
+            image: canvas.toDataURL("image/jpeg", 0.58),
+            capturedAt: new Date().toISOString(),
+          });
+        };
+
+        publishFrame();
+        screenFrameTimerRef.current = window.setInterval(publishFrame, 900);
+      }, 600);
+    } catch (error) {
+      console.warn("Không thể chia sẻ màn hình:", error);
+    }
+  };
+
+  const toggleScreenShare = () => {
+    if (screenShareStream) {
+      stopScreenShare();
+      return;
+    }
+
+    void startScreenShare();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (screenFrameTimerRef.current !== null) {
+        window.clearInterval(screenFrameTimerRef.current);
+      }
+      screenShareStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenShareStreamRef.current = null;
+    };
+  }, []);
 
   const toggleMic = () => {
     if (localStream) {
@@ -783,6 +1053,8 @@ export default function TeachingRoomPage() {
   const cameraOffStudentCount = onlineParticipants.filter((participant) =>
     isStudentCameraOff(participant.studentId),
   ).length;
+  const raisedHandList = Object.entries(raisedHands);
+  const remoteScreenShareList = Object.values(remoteScreenShares);
   const aiSummaryText =
     onlineParticipants.length === 0
       ? "Chờ sinh viên"
@@ -805,6 +1077,17 @@ export default function TeachingRoomPage() {
             </div>
           </div>
           <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-white/5 text-right shadow-2xl flex items-center gap-4">
+            {raisedHandList.length > 0 && (
+              <div className="text-left border-r border-white/10 pr-4">
+                <p className="text-[9px] text-amber-300 uppercase tracking-widest font-bold mb-1 flex items-center gap-1">
+                  <Hand size={12} />
+                  Dang gio tay
+                </p>
+                <p className="text-amber-200 font-black text-xs uppercase tracking-wider max-w-[220px] truncate">
+                  {raisedHandList.map(([, item]) => item.fullName).join(", ")}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mb-0.5">
                 AI Sinh viên
@@ -818,7 +1101,99 @@ export default function TeachingRoomPage() {
 
         {/* VIDEO GRID */}
         <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 content-start">
+          {screenShareStream && (
+            <div
+              className={`bg-slate-900 rounded-[2rem] border border-blue-500/30 overflow-hidden relative shadow-2xl shadow-blue-950/30 flex items-center justify-center ${
+                isScreenShareExpanded
+                  ? "h-[520px] sm:col-span-2 lg:col-span-3 xl:col-span-4"
+                  : "h-64"
+              }`}
+            >
+              <video
+                ref={screenVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-contain bg-black"
+              />
+              <div className="absolute left-4 top-4 bg-blue-600/90 backdrop-blur px-3 py-1.5 rounded-xl border border-blue-400/30 text-xs font-black tracking-widest uppercase flex items-center gap-2">
+                <Monitor size={14} />
+                Màn hình giảng viên
+              </div>
+              <div className="absolute right-4 top-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsScreenShareExpanded((value) => !value)}
+                  className="p-2.5 rounded-xl bg-slate-950/80 text-white border border-white/10 hover:bg-slate-800 transition-colors"
+                  title={isScreenShareExpanded ? "Thu nhỏ" : "Phóng to"}
+                >
+                  {isScreenShareExpanded ? (
+                    <Minimize2 size={16} />
+                  ) : (
+                    <Maximize2 size={16} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={stopScreenShare}
+                  className="px-3 py-2.5 rounded-xl bg-rose-600/90 text-white border border-rose-400/30 hover:bg-rose-700 transition-colors text-[10px] font-black uppercase tracking-widest"
+                >
+                  Dừng
+                </button>
+              </div>
+            </div>
+          )}
           {/* Ô WEBCAM GIẢNG VIÊN */}
+          {remoteScreenShareList.map((share) => {
+            const isExpanded = expandedRemoteScreenUserId === share.userId;
+
+            return (
+              <div
+                key={share.userId}
+                className={`bg-slate-900 rounded-[2rem] border border-amber-500/30 overflow-hidden relative shadow-2xl shadow-amber-950/20 flex items-center justify-center ${
+                  isExpanded
+                    ? "h-[520px] sm:col-span-2 lg:col-span-3 xl:col-span-4"
+                    : "h-64"
+                }`}
+              >
+                {share.image ? (
+                  <img
+                    src={share.image}
+                    alt={`${share.fullName || "Hoc vien"} dang chia se man hinh`}
+                    className="h-full w-full object-contain bg-black"
+                  />
+                ) : (
+                  <div className="text-center flex flex-col items-center gap-3">
+                    <Monitor size={36} className="text-slate-600" />
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                      Dang cho man hinh chia se
+                    </span>
+                  </div>
+                )}
+                <div className="absolute left-4 top-4 bg-amber-500/90 text-slate-950 backdrop-blur px-3 py-1.5 rounded-xl border border-amber-300/40 text-xs font-black tracking-widest uppercase flex items-center gap-2">
+                  <Monitor size={14} />
+                  {share.fullName || "Hoc vien"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedRemoteScreenUserId((current) =>
+                      current === share.userId ? null : share.userId,
+                    )
+                  }
+                  className="absolute right-4 top-4 p-2.5 rounded-xl bg-slate-950/80 text-white border border-white/10 hover:bg-slate-800 transition-colors"
+                  title={isExpanded ? "Thu nho" : "Phong to"}
+                >
+                  {isExpanded ? (
+                    <Minimize2 size={16} />
+                  ) : (
+                    <Maximize2 size={16} />
+                  )}
+                </button>
+              </div>
+            );
+          })}
+
           <div className="bg-slate-900 rounded-[2rem] border border-white/5 overflow-hidden h-64 relative shadow-md flex items-center justify-center">
             {localStream && !isVideoOff ? (
               <video
@@ -919,7 +1294,15 @@ export default function TeachingRoomPage() {
               {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
             </button>
 
-            <button className="p-3.5 bg-slate-900 text-slate-300 rounded-full hover:bg-slate-800 border border-white/5 transition-colors">
+            <button
+              onClick={toggleScreenShare}
+              className={`p-3.5 rounded-full border transition-colors ${
+                screenShareStream
+                  ? "bg-blue-600 text-white border-blue-500 hover:bg-blue-700"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border-white/5"
+              }`}
+              title={screenShareStream ? "Dừng chia sẻ màn hình" : "Chia sẻ màn hình"}
+            >
               <Monitor size={18} />
             </button>
             <button className="p-3.5 bg-slate-900 text-slate-300 rounded-full hover:bg-slate-800 border border-white/5 transition-colors">

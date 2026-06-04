@@ -59,7 +59,7 @@ api.interceptors.response.use(
           refreshError,
         );
 
-        useAuthStore.getState().clearAuth();
+        useAuthStore.getState().logoutLocal();
         window.location.href = "/login";
         return Promise.reject(
           new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại."),

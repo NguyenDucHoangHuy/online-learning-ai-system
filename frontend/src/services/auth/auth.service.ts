@@ -1,5 +1,6 @@
 // src/services/auth/auth.service.ts
 import { api } from "../../lib/axios";
+import { useAuthStore } from "../../stores/auth.store";
 import { LoginPayload, RegisterPayload, AuthResponse } from "../../types/api/";
 
 export const authService = {
@@ -25,7 +26,10 @@ export const authService = {
    * Gửi yêu cầu xóa Refresh Token dưới Database của Backend
    */
   logout: async (): Promise<{ success: boolean; message?: string }> => {
-    return api.post("/auth/logout");
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken) return { success: true };
+
+    return api.post("/auth/logout", { refreshToken });
   },
 
   /**

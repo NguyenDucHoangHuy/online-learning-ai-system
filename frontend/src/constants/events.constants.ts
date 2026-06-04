@@ -10,6 +10,10 @@ export const SOCKET_EVENTS = {
   SESSION_LEAVE: "session:leave",
   SESSION_ENDED: "session:ended",
   MEDIA_STATE: "media:state",
+  SCREEN_SHARE_START: "screen-share:start",
+  SCREEN_SHARE_FRAME: "screen-share:frame",
+  SCREEN_SHARE_STOP: "screen-share:stop",
+  HAND_RAISE: "hand:raise",
 
   // Luồng Phê duyệt Phòng chờ (HTTP tác động -> Socket phát tín hiệu Real-time)
   PARTICIPANT_JOINED: "participant:joined",

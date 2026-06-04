@@ -1,4 +1,4 @@
-import { AttentionLevel, EmotionType } from "@prisma/client";
+import { AttentionLevel, EmotionType, JoinStatus, Role } from "@prisma/client";
 import { prisma } from "../../prisma/client";
 import { AnalyzeStudentFrameDto, CreateEmotionLogDto } from "./emotions.dto";
 import { getIO } from "../../sockets/socket.server";
@@ -6,6 +6,75 @@ import { SOCKET_EVENTS } from "../../sockets/socket.events";
 import { AppError } from "../../common/middleware/error.middleware";
 import { HTTP_STATUS } from "../../common/constants";
 import { env } from "../../config/env";
+
+const ATTENTION_SCORE: Record<AttentionLevel, number> = {
+  [AttentionLevel.HIGH]: 100,
+  [AttentionLevel.MEDIUM]: 70,
+  [AttentionLevel.LOW]: 0,
+};
+
+const round = (value: number, digits = 2) => {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+
+const buildTimeline = (
+  logs: Array<{ recordedAt: Date; attentionLevel: AttentionLevel }>,
+  firstLogAt: Date | null,
+) => {
+  const timelineBuckets = new Map<
+    number,
+    {
+      bucketMinute: number;
+      values: number[];
+      highCount: number;
+      mediumCount: number;
+      lowCount: number;
+      logCount: number;
+    }
+  >();
+
+  if (!firstLogAt) return [];
+
+  logs.forEach((log) => {
+    const elapsedMs = log.recordedAt.getTime() - firstLogAt.getTime();
+    const bucketMinute = Math.max(
+      0,
+      Math.floor(elapsedMs / (5 * 60 * 1000)) * 5,
+    );
+    const current = timelineBuckets.get(bucketMinute) ?? {
+      bucketMinute,
+      values: [],
+      highCount: 0,
+      mediumCount: 0,
+      lowCount: 0,
+      logCount: 0,
+    };
+
+    current.values.push(ATTENTION_SCORE[log.attentionLevel]);
+    current.logCount += 1;
+    if (log.attentionLevel === AttentionLevel.HIGH) current.highCount += 1;
+    if (log.attentionLevel === AttentionLevel.MEDIUM)
+      current.mediumCount += 1;
+    if (log.attentionLevel === AttentionLevel.LOW) current.lowCount += 1;
+
+    timelineBuckets.set(bucketMinute, current);
+  });
+
+  return Array.from(timelineBuckets.values())
+    .sort((a, b) => a.bucketMinute - b.bucketMinute)
+    .map((bucket) => ({
+      minute: bucket.bucketMinute,
+      averageAttention: round(
+        bucket.values.reduce((sum, value) => sum + value, 0) /
+          bucket.values.length,
+      ),
+      logCount: bucket.logCount,
+      highCount: bucket.highCount,
+      mediumCount: bucket.mediumCount,
+      lowCount: bucket.lowCount,
+    }));
+};
 
 interface AiStudentAnalysis {
   presence: "present" | "absent";
@@ -216,26 +285,196 @@ export const emotionsService = {
   },
 
   // ✅ VÁ LỖI HIỆU NĂNG: Giao việc đếm cho DB xử lý qua câu lệnh count() siêu tốc
-  getSessionReport: async (sessionId: string) => {
-    // Chạy song song 2 câu lệnh đếm dữ liệu bằng Promise.all để tối ưu thời gian phản hồi
-    const [totalLogs, lowAttentionCount] = await Promise.all([
-      prisma.emotionLog.count({
-        where: { participant: { sessionId } },
-      }),
-      prisma.emotionLog.count({
-        where: {
-          participant: { sessionId },
-          attentionLevel: AttentionLevel.LOW,
+  getSessionReport: async (
+    sessionId: string,
+    requester?: { id: string; role: Role },
+  ) => {
+    const session = await prisma.classSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        class: {
+          select: {
+            id: true,
+            name: true,
+            teacherId: true,
+          },
         },
-      }),
-    ]);
+        participants: {
+          where: {
+            OR: [
+              { joinStatus: { in: [JoinStatus.APPROVED, JoinStatus.LEFT] } },
+              { emotionLogs: { some: {} } },
+            ],
+          },
+          include: {
+            student: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+            emotionLogs: {
+              orderBy: { recordedAt: "asc" },
+            },
+          },
+        },
+      },
+    });
 
-    const total = totalLogs || 1;
-    const averageAttention = ((total - lowAttentionCount) / total) * 100;
+    if (!session) {
+      throw new AppError("Session not found", HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (requester?.role === Role.TEACHER && session.class.teacherId !== requester.id) {
+      throw new AppError("You do not have access to this report", HTTP_STATUS.FORBIDDEN);
+    }
+
+    if (
+      requester?.role === Role.STUDENT &&
+      !session.participants.some((participant) => participant.studentId === requester.id)
+    ) {
+      throw new AppError("You do not have access to this report", HTTP_STATUS.FORBIDDEN);
+    }
+
+    const logs = session.participants.flatMap((participant) =>
+      participant.emotionLogs.map((log) => ({
+        ...log,
+        participantId: participant.id,
+      })),
+    );
+
+    const totalLogs = logs.length;
+    const lowAttentionCount = logs.filter(
+      (log) => log.attentionLevel === AttentionLevel.LOW,
+    ).length;
+    const focusedLogs = logs.filter(
+      (log) => log.attentionLevel !== AttentionLevel.LOW,
+    ).length;
+    const highAttentionCount = logs.filter(
+      (log) => log.attentionLevel === AttentionLevel.HIGH,
+    ).length;
+    const averageAttention =
+      totalLogs > 0 ? (focusedLogs / totalLogs) * 100 : 0;
+    const weightedAttention =
+      totalLogs > 0
+        ? logs.reduce(
+            (sum, log) => sum + ATTENTION_SCORE[log.attentionLevel],
+            0,
+          ) / totalLogs
+        : 0;
+
+    const emotionDistribution = Object.values(EmotionType).map((emotion) => {
+      const count = logs.filter((log) => log.emotion === emotion).length;
+      return {
+        emotion,
+        count,
+        percentage: totalLogs > 0 ? round((count / totalLogs) * 100) : 0,
+      };
+    });
+
+    const attentionDistribution = Object.values(AttentionLevel).map(
+      (attentionLevel) => {
+        const count = logs.filter(
+          (log) => log.attentionLevel === attentionLevel,
+        ).length;
+        return {
+          attentionLevel,
+          count,
+          percentage: totalLogs > 0 ? round((count / totalLogs) * 100) : 0,
+        };
+      },
+    );
+
+    const firstLogAt = session.startedAt ?? logs[0]?.recordedAt ?? null;
+    const timeline = buildTimeline(logs, firstLogAt);
+
+    const students = session.participants.map((participant) => {
+      const participantLogs = participant.emotionLogs;
+      const participantTotal = participantLogs.length;
+      const participantFocused = participantLogs.filter(
+        (log) => log.attentionLevel !== AttentionLevel.LOW,
+      ).length;
+      const participantLow = participantLogs.filter(
+        (log) => log.attentionLevel === AttentionLevel.LOW,
+      ).length;
+      const participantWeighted =
+        participantTotal > 0
+          ? participantLogs.reduce(
+              (sum, log) => sum + ATTENTION_SCORE[log.attentionLevel],
+              0,
+            ) / participantTotal
+          : 0;
+
+      const emotionCounts = Object.values(EmotionType).map((emotion) => ({
+        emotion,
+        count: participantLogs.filter((log) => log.emotion === emotion).length,
+      }));
+      const primaryEmotion = emotionCounts.reduce(
+        (best, item) => (item.count > best.count ? item : best),
+        { emotion: EmotionType.NEUTRAL, count: 0 },
+      ).emotion;
+      const latestLog = participantLogs[participantLogs.length - 1] ?? null;
+
+      return {
+        participantId: participant.id,
+        studentId: participant.student.id,
+        fullName: participant.student.fullName,
+        email: participant.student.email,
+        joinedAt: participant.joinedAt,
+        leftAt: participant.leftAt,
+        logCount: participantTotal,
+        focusedLogCount: participantFocused,
+        lowAttentionCount: participantLow,
+        attentionPercentage:
+          participantTotal > 0
+            ? round((participantFocused / participantTotal) * 100)
+            : 0,
+        weightedAttention: round(participantWeighted),
+        primaryEmotion,
+        latestEmotion: latestLog?.emotion ?? null,
+        latestAttentionLevel: latestLog?.attentionLevel ?? null,
+        latestRecordedAt: latestLog?.recordedAt ?? null,
+        timeline: buildTimeline(participantLogs, firstLogAt),
+        logs: participantLogs.map((log, index) => ({
+          index: index + 1,
+          id: log.id,
+          emotion: log.emotion,
+          confidence: round(log.confidence * 100),
+          attentionLevel: log.attentionLevel,
+          attentionScore: ATTENTION_SCORE[log.attentionLevel],
+          recordedAt: log.recordedAt,
+          minute:
+            firstLogAt !== null
+              ? round((log.recordedAt.getTime() - firstLogAt.getTime()) / 60000)
+              : null,
+        })),
+      };
+    });
 
     return {
+      session: {
+        id: session.id,
+        title: session.title,
+        sessionCode: session.sessionCode,
+        status: session.status,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        createdAt: session.createdAt,
+        class: session.class,
+      },
       totalLogs,
-      averageAttention: Math.round(averageAttention * 100) / 100, // Làm tròn 2 chữ số thập phân cho đẹp UI
+      averageAttention: round(averageAttention),
+      weightedAttention: round(weightedAttention),
+      highAttentionCount,
+      lowAttentionCount,
+      participantCount: session.participants.length,
+      analyzedParticipantCount: students.filter((student) => student.logCount > 0)
+        .length,
+      emotionDistribution,
+      attentionDistribution,
+      timeline,
+      students,
     };
   },
 

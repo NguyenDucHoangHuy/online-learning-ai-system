@@ -22,6 +22,81 @@ export const registerSocketHandlers = (io: CustomServer) => {
     registerSessionHandlers(io, socket);
     registerWebRTCHandlers(io, socket);
 
+    socket.on(
+      SOCKET_EVENTS.SCREEN_SHARE_START,
+      (payload: { sessionId?: string; fullName?: string }) => {
+        if (!payload.sessionId) return;
+
+        socket.to(`session:${payload.sessionId}`).emit(
+          SOCKET_EVENTS.SCREEN_SHARE_START,
+          {
+            sessionId: payload.sessionId,
+            userId: id,
+            role,
+            fullName: payload.fullName,
+            startedAt: new Date().toISOString(),
+          },
+        );
+      },
+    );
+
+    socket.on(
+      SOCKET_EVENTS.SCREEN_SHARE_FRAME,
+      (payload: {
+        sessionId?: string;
+        image?: string;
+        capturedAt?: string;
+        fullName?: string;
+      }) => {
+        if (!payload.sessionId || !payload.image) return;
+
+        socket.to(`session:${payload.sessionId}`).emit(
+          SOCKET_EVENTS.SCREEN_SHARE_FRAME,
+          {
+            sessionId: payload.sessionId,
+            userId: id,
+            role,
+            fullName: payload.fullName,
+            image: payload.image,
+            capturedAt: payload.capturedAt || new Date().toISOString(),
+          },
+        );
+      },
+    );
+
+    socket.on(
+      SOCKET_EVENTS.SCREEN_SHARE_STOP,
+      (payload: { sessionId?: string }) => {
+        if (!payload.sessionId) return;
+
+        socket.to(`session:${payload.sessionId}`).emit(
+          SOCKET_EVENTS.SCREEN_SHARE_STOP,
+          {
+            sessionId: payload.sessionId,
+            userId: id,
+            role,
+            stoppedAt: new Date().toISOString(),
+          },
+        );
+      },
+    );
+
+    socket.on(
+      SOCKET_EVENTS.HAND_RAISE,
+      (payload: { sessionId?: string; isRaised?: boolean; fullName?: string }) => {
+        if (!payload.sessionId) return;
+
+        socket.to(`session:${payload.sessionId}`).emit(SOCKET_EVENTS.HAND_RAISE, {
+          sessionId: payload.sessionId,
+          userId: id,
+          role,
+          fullName: payload.fullName,
+          isRaised: Boolean(payload.isRaised),
+          updatedAt: new Date().toISOString(),
+        });
+      },
+    );
+
     socket.on("disconnecting", () => {
       socket.rooms.forEach((roomName) => {
         if (!roomName.startsWith("session:")) return;
@@ -30,6 +105,21 @@ export const registerSocketHandlers = (io: CustomServer) => {
           userId: id,
           role,
           leftAt: new Date().toISOString(),
+        });
+
+        socket.to(roomName).emit(SOCKET_EVENTS.SCREEN_SHARE_STOP, {
+          sessionId: roomName.replace("session:", ""),
+          userId: id,
+          role,
+          stoppedAt: new Date().toISOString(),
+        });
+
+        socket.to(roomName).emit(SOCKET_EVENTS.HAND_RAISE, {
+          sessionId: roomName.replace("session:", ""),
+          userId: id,
+          role,
+          isRaised: false,
+          updatedAt: new Date().toISOString(),
         });
       });
     });

@@ -12,6 +12,8 @@ import {
   Send,
   Users,
   MonitorUp,
+  Maximize2,
+  Minimize2,
   Loader2,
   ShieldAlert,
   MoreVertical,
@@ -210,7 +212,17 @@ export default function StudyRoomPage() {
 
   const [showRightSidebar, setShowRightSidebar] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "participants">("chat");
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isScreenShareExpanded, setIsScreenShareExpanded] = useState(false);
+  const [teacherScreenShareImage, setTeacherScreenShareImage] = useState<
+    string | null
+  >(null);
+  const localScreenVideoRef = useRef<HTMLVideoElement>(null);
+  const localScreenFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const localScreenFrameTimerRef = useRef<number | null>(null);
+  const localScreenShareStreamRef = useRef<MediaStream | null>(null);
+  const [localScreenShareStream, setLocalScreenShareStream] =
+    useState<MediaStream | null>(null);
+  const [isHandRaised, setIsHandRaised] = useState(false);
 
   const { socket, isConnected } = useSocket();
   const user = useAuthStore((s) => s.user);
@@ -329,6 +341,40 @@ export default function StudyRoomPage() {
   }, [socket, isConnected]);
 
   useEffect(() => {
+    if (!socket || !isConnected || !sessionId) return;
+
+    const handleScreenShareStart = (payload: { sessionId: string }) => {
+      if (payload.sessionId !== sessionId) return;
+      setTeacherScreenShareImage("");
+      setIsScreenShareExpanded(true);
+    };
+
+    const handleScreenShareFrame = (payload: {
+      sessionId: string;
+      image: string;
+    }) => {
+      if (payload.sessionId !== sessionId) return;
+      setTeacherScreenShareImage(payload.image);
+    };
+
+    const handleScreenShareStop = (payload: { sessionId?: string }) => {
+      if (payload.sessionId && payload.sessionId !== sessionId) return;
+      setTeacherScreenShareImage(null);
+      setIsScreenShareExpanded(false);
+    };
+
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_START, handleScreenShareStart);
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_FRAME, handleScreenShareFrame);
+    socket.on(SOCKET_EVENTS.SCREEN_SHARE_STOP, handleScreenShareStop);
+
+    return () => {
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_START, handleScreenShareStart);
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_FRAME, handleScreenShareFrame);
+      socket.off(SOCKET_EVENTS.SCREEN_SHARE_STOP, handleScreenShareStop);
+    };
+  }, [socket, isConnected, sessionId]);
+
+  useEffect(() => {
     let hardwareStream: MediaStream | null = null;
     async function startHardware() {
       try {
@@ -415,6 +461,13 @@ export default function StudyRoomPage() {
   useEffect(() => {
     mediaStateRef.current = { isMuted, isVideoOff };
   }, [isMuted, isVideoOff]);
+
+  useEffect(() => {
+    if (localScreenVideoRef.current) {
+      localScreenVideoRef.current.srcObject = localScreenShareStream;
+    }
+    localScreenShareStreamRef.current = localScreenShareStream;
+  }, [localScreenShareStream]);
 
   const aiAnalysisBusyRef = useRef(false);
   useEffect(() => {
@@ -651,6 +704,126 @@ export default function StudyRoomPage() {
     initiateCall,
   ]);
 
+  const stopLocalScreenShare = () => {
+    if (localScreenFrameTimerRef.current !== null) {
+      window.clearInterval(localScreenFrameTimerRef.current);
+      localScreenFrameTimerRef.current = null;
+    }
+
+    localScreenShareStreamRef.current
+      ?.getTracks()
+      .forEach((track) => track.stop());
+    localScreenShareStreamRef.current = null;
+    setLocalScreenShareStream(null);
+
+    if (localScreenVideoRef.current) {
+      localScreenVideoRef.current.srcObject = null;
+    }
+
+    if (socket && isConnected) {
+      socket.emit(SOCKET_EVENTS.SCREEN_SHARE_STOP, { sessionId });
+    }
+  };
+
+  const startLocalScreenShare = async () => {
+    if (!socket || !isConnected) {
+      alert("Socket chua san sang, vui long thu lai sau vai giay.");
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 8 },
+        audio: false,
+      });
+      const [screenTrack] = displayStream.getVideoTracks();
+
+      localScreenShareStreamRef.current = displayStream;
+      setLocalScreenShareStream(displayStream);
+      socket.emit(SOCKET_EVENTS.SCREEN_SHARE_START, {
+        sessionId,
+        fullName: user?.fullName,
+      });
+
+      screenTrack.addEventListener("ended", stopLocalScreenShare, {
+        once: true,
+      });
+
+      window.setTimeout(() => {
+        if (!localScreenVideoRef.current) return;
+
+        const canvas =
+          localScreenFrameCanvasRef.current ?? document.createElement("canvas");
+        localScreenFrameCanvasRef.current = canvas;
+        const context = canvas.getContext("2d");
+
+        const publishFrame = () => {
+          const video = localScreenVideoRef.current;
+          if (
+            !video ||
+            !context ||
+            video.videoWidth === 0 ||
+            video.videoHeight === 0
+          ) {
+            return;
+          }
+
+          const targetWidth = 960;
+          const ratio = video.videoHeight / video.videoWidth;
+          canvas.width = targetWidth;
+          canvas.height = Math.round(targetWidth * ratio);
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          socket.emit(SOCKET_EVENTS.SCREEN_SHARE_FRAME, {
+            sessionId,
+            fullName: user?.fullName,
+            image: canvas.toDataURL("image/jpeg", 0.58),
+            capturedAt: new Date().toISOString(),
+          });
+        };
+
+        publishFrame();
+        localScreenFrameTimerRef.current = window.setInterval(publishFrame, 900);
+      }, 600);
+    } catch (error) {
+      console.warn("Khong the chia se man hinh hoc sinh:", error);
+    }
+  };
+
+  const toggleLocalScreenShare = () => {
+    if (localScreenShareStream) {
+      stopLocalScreenShare();
+      return;
+    }
+
+    void startLocalScreenShare();
+  };
+
+  const toggleHandRaise = () => {
+    const nextRaised = !isHandRaised;
+    setIsHandRaised(nextRaised);
+
+    if (socket && isConnected) {
+      socket.emit(SOCKET_EVENTS.HAND_RAISE, {
+        sessionId,
+        fullName: user?.fullName,
+        isRaised: nextRaised,
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (localScreenFrameTimerRef.current !== null) {
+        window.clearInterval(localScreenFrameTimerRef.current);
+      }
+      localScreenShareStreamRef.current
+        ?.getTracks()
+        .forEach((track) => track.stop());
+      localScreenShareStreamRef.current = null;
+    };
+  }, []);
+
   const toggleMic = () => {
     if (localStream) {
       const audioTrack = localStream.getAudioTracks()[0];
@@ -724,8 +897,15 @@ export default function StudyRoomPage() {
     }
     {
       if (localStream) localStream.getTracks().forEach((track) => track.stop());
-      if (socket && isConnected)
+      stopLocalScreenShare();
+      if (socket && isConnected) {
+        socket.emit(SOCKET_EVENTS.HAND_RAISE, {
+          sessionId,
+          fullName: user?.fullName,
+          isRaised: false,
+        });
         socketEmitter.emitSessionLeave(socket, sessionId);
+      }
       setIsLeaving(false);
       navigate(ROUTES.STUDENT_JOIN, { replace: true });
     }
@@ -808,6 +988,7 @@ export default function StudyRoomPage() {
     remoteMediaStates[sessionData.class.teacherId]?.isVideoOff ??
     remoteHardwareStates[sessionData.class.teacherId]?.isVideoOff ??
     true;
+  const isTeacherScreenSharing = teacherScreenShareImage !== null;
 
   return (
     <div className="h-screen bg-slate-950 text-white flex font-sans overflow-hidden">
@@ -823,9 +1004,16 @@ export default function StudyRoomPage() {
         </div>
 
         <div className="flex-1 w-full h-full flex flex-col gap-4 mt-20 overflow-hidden">
-          {isScreenSharing ? (
+          {isTeacherScreenSharing && isScreenShareExpanded ? (
             <>
-              <div className="flex-1 bg-slate-900 rounded-3xl border border-slate-800 flex items-center justify-center relative overflow-hidden shadow-2xl">
+              <div className="flex-1 bg-slate-900 rounded-3xl border border-blue-500/30 flex items-center justify-center relative overflow-hidden shadow-2xl shadow-blue-950/30">
+                {teacherScreenShareImage && (
+                  <img
+                    src={teacherScreenShareImage}
+                    alt="Màn hình giảng viên đang chia sẻ"
+                    className="absolute inset-0 h-full w-full object-contain bg-black"
+                  />
+                )}
                 <div className="text-center">
                   <MonitorUp
                     size={48}
@@ -835,6 +1023,18 @@ export default function StudyRoomPage() {
                     Giảng viên đang chia sẻ màn hình...
                   </p>
                 </div>
+                <div className="absolute left-4 top-4 bg-blue-600/90 backdrop-blur px-3 py-1.5 rounded-xl border border-blue-400/30 text-xs font-black tracking-widest uppercase flex items-center gap-2 z-10">
+                  <MonitorUp size={14} />
+                  Màn hình giảng viên
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsScreenShareExpanded(false)}
+                  className="absolute right-4 top-4 p-2.5 rounded-xl bg-slate-950/80 text-white border border-white/10 hover:bg-slate-800 transition-colors z-10"
+                  title="Thu nhỏ"
+                >
+                  <Minimize2 size={16} />
+                </button>
               </div>
 
               <div className="h-40 flex gap-4 overflow-x-auto overflow-y-hidden pb-2 snap-x">
@@ -908,6 +1108,21 @@ export default function StudyRoomPage() {
                   </div>
                 </div>
 
+                {localScreenShareStream && (
+                  <div className="w-64 flex-shrink-0 snap-start bg-slate-900 rounded-2xl overflow-hidden relative border border-amber-500/30 flex items-center justify-center">
+                    <video
+                      ref={localScreenVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-contain bg-black"
+                    />
+                    <div className="absolute bottom-2 left-2 bg-slate-950/70 px-2 py-1 rounded-lg text-[10px] font-bold text-amber-300">
+                      Ban dang chia se
+                    </div>
+                  </div>
+                )}
+
                 {otherStudents.map((p) => {
                   const companionStream = remoteStreams[p.studentId];
                   return (
@@ -934,6 +1149,59 @@ export default function StudyRoomPage() {
             </>
           ) : (
             <div className="flex-1 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
+              {localScreenShareStream && (
+                <div className="bg-slate-900 rounded-[2rem] border border-amber-500/30 overflow-hidden h-64 relative shadow-md flex items-center justify-center">
+                  <video
+                    ref={localScreenVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain bg-black"
+                  />
+                  <div className="absolute bottom-4 left-4 bg-slate-950/70 backdrop-blur px-3 py-1.5 rounded-xl border border-white/5 text-xs font-bold flex items-center gap-2">
+                    <MonitorUp size={14} className="text-amber-400" />
+                    Ban dang chia se man hinh
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopLocalScreenShare}
+                    className="absolute right-4 top-4 px-3 py-2 rounded-xl bg-rose-600/90 text-white border border-rose-400/30 hover:bg-rose-700 transition-colors text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Dung
+                  </button>
+                </div>
+              )}
+
+              {isTeacherScreenSharing && (
+                <div className="bg-slate-900 rounded-[2rem] border border-blue-500/30 overflow-hidden h-64 relative shadow-md flex items-center justify-center">
+                  {teacherScreenShareImage ? (
+                    <img
+                      src={teacherScreenShareImage}
+                      alt="Màn hình giảng viên đang chia sẻ"
+                      className="h-full w-full object-contain bg-black"
+                    />
+                  ) : (
+                    <div className="text-center flex flex-col items-center gap-3">
+                      <MonitorUp size={36} className="text-slate-600" />
+                      <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                        Đang chờ màn hình chia sẻ
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-4 bg-slate-950/70 backdrop-blur px-3 py-1.5 rounded-xl border border-white/5 text-xs font-bold flex items-center gap-2">
+                    <MonitorUp size={14} className="text-blue-400" />
+                    Màn hình giảng viên
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsScreenShareExpanded(true)}
+                    className="absolute right-4 top-4 p-2.5 rounded-xl bg-slate-950/80 text-white border border-white/10 hover:bg-slate-800 transition-colors"
+                    title="Phóng to"
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                </div>
+              )}
               {/* Ô 1: WEBCAM GIẢNG VIÊN */}
               <div className="bg-slate-900 rounded-[2rem] border border-white/5 overflow-hidden h-64 relative shadow-md flex items-center justify-center">
                 {teacherStream && (
@@ -1076,13 +1344,30 @@ export default function StudyRoomPage() {
             >
               {isVideoOff ? <VideoOff size={18} /> : <Video size={18} />}
             </button>
-            <button className="p-4 bg-slate-800 text-slate-300 rounded-full hover:bg-slate-700 transition-colors">
+            <button
+              onClick={toggleHandRaise}
+              className={`p-4 rounded-full transition-colors border ${
+                isHandRaised
+                  ? "bg-amber-500 text-slate-950 border-amber-300 hover:bg-amber-400"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700 border-white/5"
+              }`}
+              title={isHandRaised ? "Ha tay" : "Gio tay"}
+            >
               <Hand size={22} />
             </button>
 
             <button
-              onClick={() => setIsScreenSharing(!isScreenSharing)}
-              className={`p-3.5 rounded-xl transition-colors ${isScreenSharing ? "bg-blue-600 text-white" : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-white/5"}`}
+              onClick={toggleLocalScreenShare}
+              className={`p-3.5 rounded-xl transition-colors ${
+                localScreenShareStream
+                  ? "bg-amber-500 text-slate-950 hover:bg-amber-400"
+                  : "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-white/5"
+              }`}
+              title={
+                localScreenShareStream
+                  ? "Dung chia se man hinh"
+                  : "Chia se man hinh cua ban"
+              }
             >
               <MonitorUp size={18} />
             </button>
